@@ -1,0 +1,3 @@
+PyQt<5.0
+numpy
+PyOpenGL
