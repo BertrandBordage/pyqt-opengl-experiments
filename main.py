@@ -7,7 +7,7 @@ from math import cos, sin, pi
 from random import choice, randint, random
 import sys
 
-from numpy import array, concatenate, float32
+from numpy import array, concatenate
 from OpenGL import GLU
 from OpenGL.GL import *
 from PyQt4 import QtCore
@@ -17,10 +17,9 @@ from PyQt4 import QtOpenGL
 from PyQt4.QtGui import (
     QPixmap, QCursor, QSlider, QGroupBox, QGridLayout, QLabel, QDockWidget)
 
-data_type = float32
 
-# from OpenGL.arrays import numpymodule
-# numpymodule.NumpyHandler.ERROR_ON_COPY = True
+from OpenGL.arrays import numpymodule
+numpymodule.NumpyHandler.ERROR_ON_COPY = True
 
 
 class GLWidget(QtOpenGL.QGLWidget):
@@ -135,7 +134,7 @@ class GLWidget(QtOpenGL.QGLWidget):
         glDrawElementsui(GL_QUADS, self.cubeIdxArray)
 
     def initGeometry(self):
-        n = 500
+        n = 200
         self.y += 3
 
         cubeVtxArray = array(
@@ -146,10 +145,11 @@ class GLWidget(QtOpenGL.QGLWidget):
              [0.0, 0.0, 1.0],
              [1.0, 0.0, 1.0],
              [1.0, 1.0, 1.0],
-             [0.0, 1.0, 1.0]], dtype=data_type)
-        self.cubeVtxArray = concatenate([cubeVtxArray + (x, 0, z)
-                                         for x in range(-n // 2, n // 2)
-                                         for z in range(-n // 2, n // 2)])
+             [0.0, 1.0, 1.0]])
+        self.cubeVtxArray = concatenate(
+            [cubeVtxArray + (x, 0, z)
+             for x in range(-n // 2, n // 2)
+             for z in range(-n // 2, n // 2)]).astype(b'float32')
         print('Chargement des points terminé.')
 
         # Modèle de cube avec de GL_QUADS.
@@ -159,7 +159,7 @@ class GLWidget(QtOpenGL.QGLWidget):
             1, 0, 4, 5,
             2, 1, 5, 6,
             0, 3, 7, 4,
-            7, 6, 5, 4], dtype=data_type) + 8 * x for x in range(n ** 2)])
+            7, 6, 5, 4]) + 8 * x for x in range(n ** 2)]).astype(b'uint32')
         # Modèle de cube avec des GL_TRIANGLES.
         # self.cubeIdxArray = concatenate([array([
         #     0, 1, 2,
@@ -174,26 +174,25 @@ class GLWidget(QtOpenGL.QGLWidget):
         #     1, 5, 6,
         #     5, 7, 6,
         #     7, 5, 4,
-        # ], dtype=dt) + 8 * x for x in range(n ** 2)])
+        # ]) + 8 * x for x in range(n ** 2)]).astype(b'uint32')
         print('Chargement des polygones terminé.')
 
         n_colors = 6
 
         def get_random_cube_color():
-            color = array([random(), random(), random()], dtype=data_type)
-            return array([color for _ in range(8)], dtype=data_type)
+            color = array([random(), random(), random()])
+            return array([color for _ in range(8)])
 
         color_cubes = [get_random_cube_color() for _ in range(n_colors)]
-        self.cubeClrArray = concatenate([choice(color_cubes)
-                                         for _ in range(n ** 2)])
+        self.cubeClrArray = concatenate([
+            choice(color_cubes) for _ in range(n ** 2)]).astype(b'float32')
         print('Chargement des couleurs terminé.')
 
     def updateGeometry(self):
         if self.action:
             cubes_len = len(self.cubeVtxArray) / 8.0
             for _ in range(250):
-                i = randint(0, cubes_len)
-                i *= 8
+                i = randint(0, cubes_len) * 8
                 self.cubeVtxArray[i:i + 8] += (0, self.action, 0)
 
     def updateDispatcher(self):
