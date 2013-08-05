@@ -131,9 +131,9 @@ class GLWidget(QtOpenGL.QGLWidget):
 
         glEnableClientState(GL_VERTEX_ARRAY)
         glEnableClientState(GL_COLOR_ARRAY)
-        glVertexPointerf(self.cubeVtxArray)
-        glColorPointerf(self.cubeClrArray)
-        glDrawElementsui(GL_QUADS, self.cubeIdxArray)
+        glVertexPointerf(self.vertices)
+        glColorPointerf(self.colors)
+        glDrawElementsui(GL_QUADS, self.indices)
 
     def initGeometry(self):
         start = datetime.datetime.now()
@@ -141,7 +141,7 @@ class GLWidget(QtOpenGL.QGLWidget):
 
         n = 300
 
-        cubeVtxArray = array(
+        vertices = array(
             [[0.0, 0.0, 0.0],
              [1.0, 0.0, 0.0],
              [1.0, 1.0, 0.0],
@@ -150,14 +150,14 @@ class GLWidget(QtOpenGL.QGLWidget):
              [1.0, 0.0, 1.0],
              [1.0, 1.0, 1.0],
              [0.0, 1.0, 1.0]])
-        self.cubeVtxArray = concatenate(
-            [cubeVtxArray + (x, 0, z)
+        self.vertices = concatenate(
+            [vertices + (x, 0, z)
              for x, z in product(range(-n // 2, n // 2), repeat=2)]
         ).astype(b'float32', copy=False)
         print('Chargement des points terminé.')
 
         # Modèle de cube avec de GL_QUADS.
-        self.cubeIdxArray = concatenate([array([
+        self.indices = concatenate([array([
             0, 1, 2, 3,
             3, 2, 6, 7,
             1, 0, 4, 5,
@@ -166,7 +166,7 @@ class GLWidget(QtOpenGL.QGLWidget):
             7, 6, 5, 4
         ]) + 8 * x for x in range(n ** 2)]).astype(b'uint32', copy=False)
         # Modèle de cube avec des GL_TRIANGLES.
-        # self.cubeIdxArray = concatenate([array([
+        # self.indices = concatenate([array([
         #     0, 1, 2,
         #     2, 3, 0,
         #     3, 2, 6,
@@ -189,7 +189,7 @@ class GLWidget(QtOpenGL.QGLWidget):
             return np.tile(color, (8, 1))
 
         color_cubes = [get_random_cube_color() for _ in range(n_colors)]
-        self.cubeClrArray = concatenate([
+        self.colors = concatenate([
             choice(color_cubes) for _ in range(n ** 2)]
         ).astype(b'float32', copy=False)
         print('Chargement des couleurs terminé.')
@@ -199,9 +199,9 @@ class GLWidget(QtOpenGL.QGLWidget):
 
     def updateGeometry(self):
         if self.action:
-            cubes_len = len(self.cubeVtxArray) / 8.0
+            cubes_len = len(self.vertices) / 8.0
             for i in np.random.randint(cubes_len, size=250) * 8:
-                self.cubeVtxArray[i:i + 8] += (0, self.action, 0)
+                self.vertices[i:i + 8] += (0, self.action, 0)
 
     def updateDispatcher(self):
         self.updatePosition()
@@ -225,7 +225,7 @@ class GLWidget(QtOpenGL.QGLWidget):
                 self.frames_counted / seconds_elapsed,
                 self.x, self.y, self.z,
                 self.adx, self.ady,
-                len(self.cubeIdxArray) / 4))  # 4 points par face.
+                len(self.indices) / 4))  # 4 points par face.
 
     def updateFPS(self):
         self.last_time = self.current_time
