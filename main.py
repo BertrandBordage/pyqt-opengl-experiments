@@ -134,7 +134,10 @@ class GLWidget(QtOpenGL.QGLWidget):
         glDrawElementsui(GL_QUADS, self.cubeIdxArray)
 
     def initGeometry(self):
-        n = 200
+        start = datetime.datetime.now()
+        print('Création du monde…')
+
+        n = 400
         self.y += 3
 
         cubeVtxArray = array(
@@ -149,7 +152,7 @@ class GLWidget(QtOpenGL.QGLWidget):
         self.cubeVtxArray = concatenate(
             [cubeVtxArray + (x, 0, z)
              for x in range(-n // 2, n // 2)
-             for z in range(-n // 2, n // 2)]).astype(b'float32')
+             for z in range(-n // 2, n // 2)]).astype(b'float32', copy=False)
         print('Chargement des points terminé.')
 
         # Modèle de cube avec de GL_QUADS.
@@ -159,7 +162,8 @@ class GLWidget(QtOpenGL.QGLWidget):
             1, 0, 4, 5,
             2, 1, 5, 6,
             0, 3, 7, 4,
-            7, 6, 5, 4]) + 8 * x for x in range(n ** 2)]).astype(b'uint32')
+            7, 6, 5, 4
+        ]) + 8 * x for x in range(n ** 2)]).astype(b'uint32', copy=False)
         # Modèle de cube avec des GL_TRIANGLES.
         # self.cubeIdxArray = concatenate([array([
         #     0, 1, 2,
@@ -174,7 +178,7 @@ class GLWidget(QtOpenGL.QGLWidget):
         #     1, 5, 6,
         #     5, 7, 6,
         #     7, 5, 4,
-        # ]) + 8 * x for x in range(n ** 2)]).astype(b'uint32')
+        # ]) + 8 * x for x in range(n ** 2)]).astype(b'uint32', copy=False)
         print('Chargement des polygones terminé.')
 
         n_colors = 6
@@ -185,8 +189,12 @@ class GLWidget(QtOpenGL.QGLWidget):
 
         color_cubes = [get_random_cube_color() for _ in range(n_colors)]
         self.cubeClrArray = concatenate([
-            choice(color_cubes) for _ in range(n ** 2)]).astype(b'float32')
+            choice(color_cubes) for _ in range(n ** 2)]
+        ).astype(b'float32', copy=False)
         print('Chargement des couleurs terminé.')
+
+        print('Chargement du monde effectué en %s secondes'
+              % (datetime.datetime.now() - start).total_seconds())
 
     def updateGeometry(self):
         if self.action:
