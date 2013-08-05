@@ -3,10 +3,12 @@
 
 from __future__ import unicode_literals, division
 import datetime
+from itertools import product
 from math import cos, sin, pi
-from random import choice, randint, random
+from random import choice
 import sys
 
+import numpy as np
 from numpy import array, concatenate
 from OpenGL import GLU
 from OpenGL.GL import *
@@ -27,7 +29,7 @@ class GLWidget(QtOpenGL.QGLWidget):
         self.parent = parent
         super(GLWidget, self).__init__(parent)
         self.x = 0.0
-        self.y = 0.0
+        self.y = 3.0
         self.z = 0.0
         self.dx = 0.0
         self.dy = 0.0
@@ -137,8 +139,7 @@ class GLWidget(QtOpenGL.QGLWidget):
         start = datetime.datetime.now()
         print('Création du monde…')
 
-        n = 400
-        self.y += 3
+        n = 300
 
         cubeVtxArray = array(
             [[0.0, 0.0, 0.0],
@@ -151,8 +152,8 @@ class GLWidget(QtOpenGL.QGLWidget):
              [0.0, 1.0, 1.0]])
         self.cubeVtxArray = concatenate(
             [cubeVtxArray + (x, 0, z)
-             for x in range(-n // 2, n // 2)
-             for z in range(-n // 2, n // 2)]).astype(b'float32', copy=False)
+             for x, z in product(range(-n // 2, n // 2), repeat=2)]
+        ).astype(b'float32', copy=False)
         print('Chargement des points terminé.')
 
         # Modèle de cube avec de GL_QUADS.
@@ -184,8 +185,8 @@ class GLWidget(QtOpenGL.QGLWidget):
         n_colors = 6
 
         def get_random_cube_color():
-            color = array([random(), random(), random()])
-            return array([color for _ in range(8)])
+            color = np.random.rand(3)
+            return np.tile(color, (8, 1))
 
         color_cubes = [get_random_cube_color() for _ in range(n_colors)]
         self.cubeClrArray = concatenate([
@@ -199,14 +200,12 @@ class GLWidget(QtOpenGL.QGLWidget):
     def updateGeometry(self):
         if self.action:
             cubes_len = len(self.cubeVtxArray) / 8.0
-            for _ in range(250):
-                i = randint(0, cubes_len) * 8
+            for i in np.random.randint(cubes_len, size=250) * 8:
                 self.cubeVtxArray[i:i + 8] += (0, self.action, 0)
 
     def updateDispatcher(self):
         self.updatePosition()
         self.updateStatusBar()
-        self.updateGeometry()
         self.updateGL()
         self.fps_iterations += 1
 
@@ -255,16 +254,19 @@ class Window(QtGui.QMainWindow):
         self.mouse_locked = False
 
         timer = QtCore.QTimer(self)
-        timer.setInterval(1000.0 / 60.0)
         QtCore.QObject.connect(timer, QtCore.SIGNAL('timeout()'),
                                self.glWidget.updateDispatcher)
-        timer.start()
+        timer.start(1000.0 / 60.0)
+
+        geometry_timer = QtCore.QTimer(self)
+        QtCore.QObject.connect(geometry_timer, QtCore.SIGNAL('timeout()'),
+                               self.glWidget.updateGeometry)
+        geometry_timer.start(1000.0 / 60.0)
 
         fps_timer = QtCore.QTimer(self)
-        fps_timer.setInterval(1000.0)
         QtCore.QObject.connect(fps_timer, QtCore.SIGNAL('timeout()'),
                                self.glWidget.updateFPS)
-        fps_timer.start()
+        fps_timer.start(1000.0)
 
     def lockMouse(self):
         self.mouse_locked = True
