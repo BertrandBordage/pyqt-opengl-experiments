@@ -169,25 +169,10 @@ class GLWidget(QtOpenGL.QGLWidget):
             [1, 0, 1],  # Back   bottom left
             [0, 0, 1],  # Back   bottom right
 
-            [0, 1, 0],  # Top    front  right
-            [1, 1, 0],  # Top    front  left
-            [1, 1, 1],  # Top    back   left
-            [0, 1, 1],  # Top    back   right
-
-            [0, 0, 0],  # Bottom front  right
-            [0, 0, 1],  # Bottom back   right
-            [1, 0, 1],  # Bottom back   left
-            [1, 0, 0],  # Bottom front  left
-
-            [1, 0, 0],  # Left   bottom front
-            [1, 0, 1],  # Left   bottom back
-            [1, 1, 1],  # Left   top    back
-            [1, 1, 0],  # Left   top    front
-
-            [0, 0, 0],  # Right  bottom front
-            [0, 0, 1],  # Right  bottom back
-            [0, 1, 1],  # Right  top    back
-            [0, 1, 0],  # Right  top    front
+            [1, 0, 1],  # Back   bottom left
+            [0, 0, 1],  # Back   bottom right
+            [0, 0, 0],  # Front  bottom right
+            [1, 0, 0],  # Front  bottom left
         ])
         self.per_cube = len(cube_vertices)
         self.vertices = concatenate(
@@ -198,19 +183,19 @@ class GLWidget(QtOpenGL.QGLWidget):
 
         # Modèle de cube avec de GL_QUADS.
         self.indices = concatenate([array([
-            0, 1, 2, 3,      # Front  face
-            7, 6, 5, 4,      # Back   face
-            8, 9, 10, 11,    # Top    face
-            12, 13, 14, 15,  # Bottom face
-            16, 17, 18, 19,  # Left   face
-            20, 21, 22, 23,  # Right  face
+            0, 1, 2, 3,   # Front  face
+            7, 6, 5, 4,   # Back   face
+            2, 3, 4, 5,   # Top    face
+            1, 0, 7, 6,   # Bottom face
+            8, 5, 2, 11,  # Left   face
+            4, 9, 10, 3,  # Right  face
         ]) + self.per_cube * x
             for x in range(n ** 2)]).astype(b'uint32', copy=False)
         print('Chargement des polygones terminé.')
 
         self.texcoords = np.tile(
             array([[0, 0], [1, 0], [1, 1], [0, 1]]),
-            (len(self.vertices) / self.per_cube, 6, 1)).astype(b'int32')
+            (len(self.vertices) / self.per_cube, 3, 1)).astype(b'int32')
         print('Chargement des textures terminé.')
 
         print('Chargement du monde effectué en %s secondes'
