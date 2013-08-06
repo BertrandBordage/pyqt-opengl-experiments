@@ -230,7 +230,7 @@ class GLWidget(QtOpenGL.QGLWidget):
         self.fps_iterations += 1
 
     def updatePosition(self):
-        self.adx %= 360.0
+        self.adx = min(max(self.adx, -90.0), 90.0)
         self.ady %= 360.0
         a = self.ary
         a_side = a + pi/2
