@@ -162,8 +162,8 @@ class GLWidget(QtOpenGL.QGLWidget):
         vertices = array([
             [0, 0, 0],  # Front bottom right
             [1, 0, 0],  # Front bottom left
-            [1, 1, 0],  # Front top    right
-            [0, 1, 0],  # Front top    left
+            [1, 1, 0],  # Front top    left
+            [0, 1, 0],  # Front top    right
             [0, 0, 1],  # Back  bottom right
             [1, 0, 1],  # Back  bottom left
             [1, 1, 1],  # Back  top    left
