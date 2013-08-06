@@ -169,10 +169,11 @@ class GLWidget(QtOpenGL.QGLWidget):
             [1, 0, 1],  # Back   bottom left
             [0, 0, 1],  # Back   bottom right
 
-            [1, 0, 1],  # Back   bottom left
-            [0, 0, 1],  # Back   bottom right
-            [0, 0, 0],  # Front  bottom right
-            [1, 0, 0],  # Front  bottom left
+            # Additional vertices to be able to apply the texture properly.
+            [1, 0, 1],  # Bottom back   left
+            [0, 0, 1],  # Bottom back   right
+            [0, 0, 0],  # Bottom front  right
+            [1, 0, 0],  # Bottom front  left
         ])
         self.per_cube = len(cube_vertices)
         self.vertices = concatenate(
