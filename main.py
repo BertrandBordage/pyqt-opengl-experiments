@@ -5,7 +5,6 @@ from __future__ import unicode_literals, division
 import datetime
 from itertools import product
 from math import cos, sin, pi
-from random import choice
 import sys
 
 import numpy as np
@@ -159,52 +158,59 @@ class GLWidget(QtOpenGL.QGLWidget):
 
         n = 300
 
-        vertices = array([
-            [0, 0, 0],  # Front bottom right
-            [1, 0, 0],  # Front bottom left
-            [1, 1, 0],  # Front top    left
-            [0, 1, 0],  # Front top    right
-            [0, 0, 1],  # Back  bottom right
-            [1, 0, 1],  # Back  bottom left
-            [1, 1, 1],  # Back  top    left
-            [0, 1, 1],  # Back  top    right
+        cube_vertices = array([
+            [0, 0, 0],  # Front  bottom right
+            [1, 0, 0],  # Front  bottom left
+            [1, 1, 0],  # Front  top    left
+            [0, 1, 0],  # Front  top    right
+
+            [0, 1, 1],  # Back   top    right
+            [1, 1, 1],  # Back   top    left
+            [1, 0, 1],  # Back   bottom left
+            [0, 0, 1],  # Back   bottom right
+
+            [0, 1, 0],  # Top    front  right
+            [1, 1, 0],  # Top    front  left
+            [1, 1, 1],  # Top    back   left
+            [0, 1, 1],  # Top    back   right
+
+            [0, 0, 0],  # Bottom front  right
+            [0, 0, 1],  # Bottom back   right
+            [1, 0, 1],  # Bottom back   left
+            [1, 0, 0],  # Bottom front  left
+
+            [1, 0, 0],  # Left   bottom front
+            [1, 0, 1],  # Left   bottom back
+            [1, 1, 1],  # Left   top    back
+            [1, 1, 0],  # Left   top    front
+
+            [0, 0, 0],  # Right  bottom front
+            [0, 0, 1],  # Right  bottom back
+            [0, 1, 1],  # Right  top    back
+            [0, 1, 0],  # Right  top    front
         ])
+        self.per_cube = len(cube_vertices)
         self.vertices = concatenate(
-            [vertices + (x, 0, z)
+            [cube_vertices + (x, 0, z)
              for x, z in product(range(-n // 2, n // 2), repeat=2)]
         ).astype(b'float32', copy=False)
         print('Chargement des points terminé.')
 
         # Modèle de cube avec de GL_QUADS.
         self.indices = concatenate([array([
-            0, 1, 2, 3,  # Front  face
-            7, 6, 5, 4,  # Back   face
-            3, 2, 6, 7,  # Top    face
-            0, 3, 7, 4,  # Bottom face
-            2, 1, 5, 6,  # Left   face
-            1, 0, 4, 5,  # Right  face
-        ]) + 8 * x for x in range(n ** 2)]).astype(b'uint32', copy=False)
-        # Modèle de cube avec des GL_TRIANGLES.
-        # self.indices = concatenate([array([
-        #     0, 1, 2,
-        #     2, 3, 0,
-        #     3, 2, 6,
-        #     6, 7, 3,
-        #     3, 7, 4,
-        #     4, 0, 3,
-        #     0, 4, 1,
-        #     1, 4, 5,
-        #     1, 6, 2,
-        #     1, 5, 6,
-        #     5, 7, 6,
-        #     7, 5, 4,
-        # ]) + 8 * x for x in range(n ** 2)]).astype(b'uint32', copy=False)
+            0, 1, 2, 3,      # Front  face
+            7, 6, 5, 4,      # Back   face
+            8, 9, 10, 11,    # Top    face
+            12, 13, 14, 15,  # Bottom face
+            16, 17, 18, 19,  # Left   face
+            20, 21, 22, 23,  # Right  face
+        ]) + self.per_cube * x
+            for x in range(n ** 2)]).astype(b'uint32', copy=False)
         print('Chargement des polygones terminé.')
 
         self.texcoords = np.tile(
-            array([[0, 0], [1, 0], [1, 1], [0, 1],
-                   [1, 0], [2, 0], [2, 1], [1, 1]]),
-            (len(self.vertices) / 8, 1)).astype('int32')
+            array([[0, 0], [1, 0], [1, 1], [0, 1]]),
+            (len(self.vertices) / self.per_cube, 6, 1)).astype(b'int32')
         print('Chargement des textures terminé.')
 
         print('Chargement du monde effectué en %s secondes'
@@ -212,9 +218,10 @@ class GLWidget(QtOpenGL.QGLWidget):
 
     def updateGeometry(self):
         if self.action:
-            cubes_len = len(self.vertices) / 8.0
-            for i in np.random.randint(cubes_len, size=250) * 8:
-                self.vertices[i:i + 8] += (0, self.action, 0)
+            random_cubes = np.random.randint(
+                len(self.vertices) / self.per_cube, size=250) * self.per_cube
+            for i in random_cubes:
+                self.vertices[i:i + self.per_cube] += (0, self.action, 0)
 
     def updateDispatcher(self):
         self.updatePosition()
