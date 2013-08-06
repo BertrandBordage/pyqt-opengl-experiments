@@ -1,3 +1,4 @@
 PyQt<5.0
-numpy
 PyOpenGL
+numpy
+Pillow

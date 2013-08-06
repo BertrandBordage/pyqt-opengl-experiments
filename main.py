@@ -12,6 +12,7 @@ import numpy as np
 from numpy import array, concatenate
 from OpenGL import GLU
 from OpenGL.GL import *
+from PIL import Image
 from PyQt4 import QtCore
 from PyQt4.QtCore import Qt
 from PyQt4 import QtGui
@@ -24,12 +25,19 @@ from OpenGL.arrays import numpymodule
 numpymodule.NumpyHandler.ERROR_ON_COPY = True
 
 
+class TextureImage(object):
+    def __init__(self, filename):
+        self.img = Image.open(filename)
+        self.width, self.height = self.img.size
+        self.str = self.img.tostring()
+
+
 class GLWidget(QtOpenGL.QGLWidget):
     def __init__(self, parent=None):
         self.parent = parent
         super(GLWidget, self).__init__(parent)
         self.x = 0.0
-        self.y = 3.0
+        self.y = 2.5
         self.z = 0.0
         self.dx = 0.0
         self.dy = 0.0
@@ -43,6 +51,7 @@ class GLWidget(QtOpenGL.QGLWidget):
         self.fixed_spot = False
         self.frames_counted = 0
         self.fps_iterations = 0
+        self.texture = TextureImage('texture.png')
 
     @property
     def arx(self):
@@ -76,6 +85,13 @@ class GLWidget(QtOpenGL.QGLWidget):
         glEnable(GL_DEPTH_TEST)
         glLightfv(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, 0.00005)
         glLightfv(GL_LIGHT0, GL_DIFFUSE, (0.7,) * 4)
+
+        glEnable(GL_TEXTURE_2D)
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+        glTexImage2D(GL_TEXTURE_2D,
+                     0, GL_RGB, self.texture.width, self.texture.height,
+                     0, GL_RGB, GL_UNSIGNED_BYTE, self.texture.str)
 
         self.initGeometry()
 
@@ -130,9 +146,11 @@ class GLWidget(QtOpenGL.QGLWidget):
         glLoadIdentity()
 
         glEnableClientState(GL_VERTEX_ARRAY)
-        glEnableClientState(GL_COLOR_ARRAY)
         glVertexPointerf(self.vertices)
-        glColorPointerf(self.colors)
+
+        glEnableClientState(GL_TEXTURE_COORD_ARRAY)
+        glTexCoordPointeri(self.texcoords)
+
         glDrawElementsui(GL_QUADS, self.indices)
 
     def initGeometry(self):
@@ -141,15 +159,16 @@ class GLWidget(QtOpenGL.QGLWidget):
 
         n = 300
 
-        vertices = array(
-            [[0.0, 0.0, 0.0],
-             [1.0, 0.0, 0.0],
-             [1.0, 1.0, 0.0],
-             [0.0, 1.0, 0.0],
-             [0.0, 0.0, 1.0],
-             [1.0, 0.0, 1.0],
-             [1.0, 1.0, 1.0],
-             [0.0, 1.0, 1.0]])
+        vertices = array([
+            [0, 0, 0],  # Front bottom right
+            [1, 0, 0],  # Front bottom left
+            [1, 1, 0],  # Front top    right
+            [0, 1, 0],  # Front top    left
+            [0, 0, 1],  # Back  bottom right
+            [1, 0, 1],  # Back  bottom left
+            [1, 1, 1],  # Back  top    left
+            [0, 1, 1],  # Back  top    right
+        ])
         self.vertices = concatenate(
             [vertices + (x, 0, z)
              for x, z in product(range(-n // 2, n // 2), repeat=2)]
@@ -158,12 +177,12 @@ class GLWidget(QtOpenGL.QGLWidget):
 
         # Modèle de cube avec de GL_QUADS.
         self.indices = concatenate([array([
-            0, 1, 2, 3,
-            3, 2, 6, 7,
-            1, 0, 4, 5,
-            2, 1, 5, 6,
-            0, 3, 7, 4,
-            7, 6, 5, 4
+            0, 1, 2, 3,  # Front  face
+            7, 6, 5, 4,  # Back   face
+            3, 2, 6, 7,  # Top    face
+            0, 3, 7, 4,  # Bottom face
+            2, 1, 5, 6,  # Left   face
+            1, 0, 4, 5,  # Right  face
         ]) + 8 * x for x in range(n ** 2)]).astype(b'uint32', copy=False)
         # Modèle de cube avec des GL_TRIANGLES.
         # self.indices = concatenate([array([
@@ -182,17 +201,11 @@ class GLWidget(QtOpenGL.QGLWidget):
         # ]) + 8 * x for x in range(n ** 2)]).astype(b'uint32', copy=False)
         print('Chargement des polygones terminé.')
 
-        n_colors = 6
-
-        def get_random_cube_color():
-            color = np.random.rand(3)
-            return np.tile(color, (8, 1))
-
-        color_cubes = [get_random_cube_color() for _ in range(n_colors)]
-        self.colors = concatenate([
-            choice(color_cubes) for _ in range(n ** 2)]
-        ).astype(b'float32', copy=False)
-        print('Chargement des couleurs terminé.')
+        self.texcoords = np.tile(
+            array([[0, 0], [1, 0], [1, 1], [0, 1],
+                   [1, 0], [2, 0], [2, 1], [1, 1]]),
+            (len(self.vertices) / 8, 1)).astype('int32')
+        print('Chargement des textures terminé.')
 
         print('Chargement du monde effectué en %s secondes'
               % (datetime.datetime.now() - start).total_seconds())
