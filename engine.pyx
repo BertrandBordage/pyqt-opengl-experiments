@@ -204,6 +204,7 @@ cdef class World(object):
             1, 0, 0, # Bottom front  left
         ]).reshape((12, 3))
         self.per_cube = len(cube_vertices)
+        # Taken from http://stackoverflow.com/a/4714857/1576438
         cdef np.ndarray indices_xz = np.array(np.arange(-n // 2, n // 2))[
             np.rollaxis(np.indices((n,) * 2), 0, 2 + 1).reshape(-1, 2)]
         cdef np.ndarray indices_xyz = np.zeros((n ** 2, 3))
