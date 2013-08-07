@@ -13,8 +13,7 @@ from itertools import product
 import numpy as np
 cimport numpy as np
 from OpenGL import GLU
-from OpenGL.GL import (
-    glLightfv, glLightiv, glMaterialfv, glTranslatef)
+from OpenGL.GL import glLightfv, glLightiv, glMaterialfv, glTranslatef
 from PIL import Image
 from PyQt4 import QtCore
 from PyQt4.QtCore import Qt
