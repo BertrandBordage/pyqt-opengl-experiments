@@ -202,7 +202,7 @@ cdef class World(object):
             0, 0, 1, # Bottom back   right
             0, 0, 0, # Bottom front  right
             1, 0, 0, # Bottom front  left
-        ]).reshape((12, 3))
+        ]).reshape(-1, 3)
         self.per_cube = len(cube_vertices)
         # Taken from http://stackoverflow.com/a/4714857/1576438
         cdef np.ndarray indices_xz = np.array(np.arange(-n // 2, n // 2))[
@@ -238,7 +238,7 @@ cdef class World(object):
                 8, 5, 2, 11, # Left   face
                 4, 9, 10, 3, # Right  face
             ]) + np.arange(self.per_cube * n ** 2,
-                           step=self.per_cube).reshape((n ** 2, 1))
+                           step=self.per_cube).reshape(-1, 1)
         ).flatten().astype(b'uint32', copy=False)
 
         # Builds a pointer for optimization.
