@@ -29,10 +29,14 @@ class TextureImage(object):
         self.str = self.img.tostring()
 
 
-class GLWidget(QtOpenGL.QGLWidget):
-    def __init__(self, parent=None):
-        self.parent = parent
-        super(GLWidget, self).__init__(parent)
+cpdef float limit_float(float f, float m, float M):
+    return m if f < m else M if f > M else f
+
+
+cdef class Camera(object):
+    cdef public float x, y, z, dx, dy, dz, adx, ady
+
+    def __init__(self):
         self.x = 0.0
         self.y = 2.5
         self.z = 0.0
@@ -41,6 +45,62 @@ class GLWidget(QtOpenGL.QGLWidget):
         self.dz = 0.0
         self.adx = 0.0  # degrés
         self.ady = 0.0  # degrés
+
+    property position:
+        def __get__(self):
+            return self.x, -self.y, self.z
+
+        def __set__(self, value):
+            self.x, self.y, self.z = value
+
+    property arx:
+        """
+        Angle de l'axe x, en radians.
+        """
+        def __get__(self):
+            return self.adx * pi / 180.0
+
+    property ary:
+        """
+        Angle de l'axe y, en radians.
+        """
+        def __get__(self):
+            return self.ady * pi / 180.0
+
+    def get_spot_position(self):
+        return -self.x, self.y, -self.z
+
+    def get_spot_direction(self):
+        return (
+            -sin(self.ary) * cos(self.arx),
+            sin(self.arx),
+            -cos(self.ary) * cos(self.arx),
+        )
+
+    def update_gl(self):
+        glRotate(self.adx, -1.0, 0.0, 0.0)
+        glRotate(self.ady, 0.0, -1.0, 0.0)
+        glTranslate(*self.position)
+
+    def update(self):
+        self.adx = limit_float(self.adx, -90.0, 90.0)
+        self.ady %= 360.0
+        a = self.ary
+        a_side = a + pi / 2
+        self.x += self.dz * sin(a) + self.dx * sin(a_side)
+        self.y += self.dy
+        self.z += self.dz * cos(a) + self.dx * cos(a_side)
+
+    def get_status(self):
+        return 'x: %s  y: %s  z: %s  rotx: %s  roty: %s' % (
+            self.x, self.y, self.z, self.adx, self.ady)
+
+
+class GLWidget(QtOpenGL.QGLWidget):
+    def __init__(self, parent=None):
+        self.parent = parent
+        super(GLWidget, self).__init__(parent)
+        self.camera = Camera()
         self.action = None
         self.action_amount = 1.0
         self.spot_position = None
@@ -49,20 +109,6 @@ class GLWidget(QtOpenGL.QGLWidget):
         self.frames_counted = 0
         self.fps_iterations = 0
         self.texture = TextureImage('texture.png')
-
-    @property
-    def arx(self):
-        """
-        Angle de l'axe x, en radians.
-        """
-        return self.adx * pi / 180.0
-
-    @property
-    def ary(self):
-        """
-        Angle de l'axe y, en radians.
-        """
-        return self.ady * pi / 180.0
 
     def initializeGL(self):
         self.qglClearColor(QtGui.QColor(0, 0, 150))
@@ -106,18 +152,14 @@ class GLWidget(QtOpenGL.QGLWidget):
     def paintGL(self):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
-        spot_direction = (
-            -sin(self.ary) * cos(self.arx),
-            sin(self.arx),
-            -cos(self.ary) * cos(self.arx),
-        )
+        spot_direction = self.camera.get_spot_direction()
 
         if self.fixed_spot:
             if self.spot_direction is None:
                 self.spot_direction = spot_direction
             spot_direction = self.spot_direction
 
-        spot_position = (-self.x, self.y, -self.z)
+        spot_position = self.camera.get_spot_position()
         if self.fixed_spot:
             if self.spot_position is None:
                 self.spot_position = spot_position
@@ -135,9 +177,7 @@ class GLWidget(QtOpenGL.QGLWidget):
         GLU.gluPerspective(
             self.parent.fov_slider.value(), aspect, 1.0, 100000.0)
 
-        glRotate(self.adx, -1.0, 0.0, 0.0)
-        glRotate(self.ady, 0.0, -1.0, 0.0)
-        glTranslate(self.x, -self.y, self.z)
+        self.camera.update_gl()
 
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
@@ -208,27 +248,17 @@ class GLWidget(QtOpenGL.QGLWidget):
                 self.vertices[i:i + self.per_cube] += (0, self.action, 0)
 
     def updateDispatcher(self):
-        self.updatePosition()
+        self.camera.update()
         self.updateStatusBar()
         self.updateGL()
         self.fps_iterations += 1
 
-    def updatePosition(self):
-        self.adx = min(max(self.adx, -90.0), 90.0)
-        self.ady %= 360.0
-        a = self.ary
-        a_side = a + pi/2
-        self.x += self.dz * sin(a) + self.dx * sin(a_side)
-        self.y += self.dy
-        self.z += self.dz * cos(a) + self.dx * cos(a_side)
-
     def updateStatusBar(self):
         seconds_elapsed = (self.current_time - self.last_time).total_seconds()
         self.parent.statusBar().showMessage(
-            'fps: %s x: %s  y: %s  z: %s  rotx: %s  roty: %s polygones: %s' % (
+            'fps: %s %s polygones: %s' % (
                 self.frames_counted / seconds_elapsed,
-                self.x, self.y, self.z,
-                self.adx, self.ady,
+                self.camera.get_status(),
                 len(self.indices) / 4))  # 4 points par face.
 
     def updateFPS(self):
@@ -364,19 +394,19 @@ class Window(QtGui.QMainWindow):
             return
         key = QKeyEvent.key()
         move_amount = self.speed_slider.value()
-        gl = self.glWidget
+        cam = self.glWidget.camera
         if key == Qt.Key_Z:
-            gl.dz += move_amount
+            cam.dz += move_amount
         if key == Qt.Key_S:
-            gl.dz -= move_amount
+            cam.dz -= move_amount
         if key == Qt.Key_Q:
-            gl.dx += move_amount
+            cam.dx += move_amount
         if key == Qt.Key_D:
-            gl.dx -= move_amount
+            cam.dx -= move_amount
         if key == Qt.Key_Space:
-            gl.dy += move_amount
+            cam.dy += move_amount
         if key == Qt.Key_Shift:
-            gl.dy -= move_amount
+            cam.dy -= move_amount
         if key == Qt.Key_Escape:
             self.unlockMouse()
 
@@ -385,19 +415,19 @@ class Window(QtGui.QMainWindow):
             return
         key = QKeyEvent.key()
         move_amount = self.speed_slider.value()
-        gl = self.glWidget
+        cam = self.glWidget.camera
         if key == Qt.Key_Z:
-            gl.dz -= move_amount
+            cam.dz -= move_amount
         if key == Qt.Key_S:
-            gl.dz += move_amount
+            cam.dz += move_amount
         if key == Qt.Key_Q:
-            gl.dx -= move_amount
+            cam.dx -= move_amount
         if key == Qt.Key_D:
-            gl.dx += move_amount
+            cam.dx += move_amount
         if key == Qt.Key_Space:
-            gl.dy -= move_amount
+            cam.dy -= move_amount
         if key == Qt.Key_Shift:
-            gl.dy += move_amount
+            cam.dy += move_amount
 
     def mouseMoveEvent(self, QMouseEvent):
         mouse_x = QMouseEvent.x()
@@ -412,8 +442,8 @@ class Window(QtGui.QMainWindow):
         if self.mouse_locked:
             self.cursor().setPos(self.global_mouse_x, self.global_mouse_y)
 
-        self.glWidget.ady -= (mouse_x - self.mouse_x) / 10.0
-        self.glWidget.adx -= (mouse_y - self.mouse_y) / 10.0
+        self.glWidget.camera.ady -= (mouse_x - self.mouse_x) / 10.0
+        self.glWidget.camera.adx -= (mouse_y - self.mouse_y) / 10.0
 
     def wheelEvent(self, QWheelEvent):
         self.glWidget.action_amount += QWheelEvent.delta() / 120.0
