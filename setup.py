@@ -3,7 +3,7 @@ from distutils.extension import Extension
 from Cython.Distutils import build_ext
 
 
-ext_modules = [Extension('engine', ['engine.pyx'])]
+ext_modules = [Extension('engine', ['engine.pyx'], libraries=['GL'])]
 
 
 setup(

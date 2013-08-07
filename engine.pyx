@@ -1,18 +1,21 @@
 # coding: utf-8
 
-#cython: cdivide=True
+# cython: boundscheck=False
+# cython: wraparound=False
+# cython: cdivide=True
+# cython: c_string_type=bytes
 
 from __future__ import unicode_literals, division
-from libc.math cimport cos, sin
+from libc.math cimport cos, sin, M_PI, M_PI_2
 import datetime
 from itertools import product
-from math import pi
 
 import numpy as np
 cimport numpy as np
-from numpy import array, concatenate
 from OpenGL import GLU
-from OpenGL.GL import *
+from OpenGL.GL import (
+    glLightfv, glLightiv, glMaterialfv, glTexImage2D, glTranslatef,
+    glVertexPointerf, glTexCoordPointeri, glDrawElementsui)
 from PIL import Image
 from PyQt4 import QtCore
 from PyQt4.QtCore import Qt
@@ -26,6 +29,66 @@ from OpenGL.arrays import numpymodule
 numpymodule.NumpyHandler.ERROR_ON_COPY = True
 
 
+cdef extern from "GL/gl.h" nogil:
+    ctypedef unsigned int GLenum
+    ctypedef unsigned int GLbitfield
+    ctypedef void         GLvoid
+    ctypedef int          GLint
+    ctypedef unsigned int GLuint
+    ctypedef int          GLsizei
+    ctypedef float        GLfloat
+    ctypedef double       GLdouble
+    int GL_UNSIGNED_BYTE
+    int GL_COLOR_BUFFER_BIT
+    int GL_DEPTH_BUFFER_BIT
+    int GL_VERTEX_ARRAY
+    int GL_TEXTURE_COORD_ARRAY
+    int GL_MODELVIEW
+    int GL_PROJECTION
+    int GL_DEPTH_TEST
+    int GL_LIGHTING
+    int GL_LIGHT0
+    int GL_TEXTURE_2D
+    int GL_TEXTURE_MAG_FILTER
+    int GL_TEXTURE_MIN_FILTER
+    int GL_RGB
+    int GL_NEAREST
+    int GL_FLAT
+    int GL_COLOR_MATERIAL
+    int GL_SPOT_CUTOFF
+    int GL_QUADRATIC_ATTENUATION
+    int GL_DIFFUSE
+    int GL_SPECULAR
+    int GL_SHININESS
+    int GL_POSITION
+    int GL_SPOT_DIRECTION
+    int GL_AMBIENT_AND_DIFFUSE
+    int GL_FRONT_AND_BACK
+    int GL_QUADS
+    void glClear(GLbitfield mask)
+    void glEnable(GLenum cap)
+    void glShadeModel(GLenum mode)
+    void glLightf(GLenum light, GLenum pname, GLfloat param)
+    # void glLightfv(GLenum light, GLenum pname, GLfloat *params)
+    # void glLightiv(GLenum light, GLenum pname, GLint *params)
+    void glColorMaterial(GLenum face, GLenum mode)
+    void glMaterialf(GLenum face, GLenum pname, GLfloat param)
+    # void glMaterialfv(GLenum face, GLenum pname, GLfloat *params)
+    void glTexParameterf(GLenum target, GLenum pname, GLfloat param)
+    # void glTexImage2D(GLenum target, GLint level, GLint internalFormat,
+    #                   GLsizei width, GLsizei height, GLint border,
+    #                   GLenum format, GLenum type, GLvoid *pixels)
+    void glMatrixMode(GLenum mode)
+    void glViewport(GLint x, GLint y, GLsizei width, GLsizei height)
+    void glLoadIdentity()
+    void glRotatef(GLfloat angle, GLfloat x, GLfloat y, GLfloat z)
+    # void glTranslatef(GLfloat x, GLfloat y, GLfloat z)
+    void glEnableClientState(GLenum cap)
+    # void glVertexPointerf(GLfloat *ptr)
+    # void glTexCoordPointeri(GLint *ptr)
+    # void glDrawElementsui(GLenum mode, GLuint *indices)
+
+
 class TextureImage(object):
     def __init__(self, filename):
         self.img = Image.open(filename)
@@ -33,14 +96,14 @@ class TextureImage(object):
         self.str = self.img.tostring()
 
 
-cpdef double limit_double(double f, double m, double M):
+cdef float limit_float(float f, float m, float M):
     return m if f < m else M if f > M else f
 
 
 cdef class Camera(object):
-    cdef public double x, y, z, dx, dy, dz, adx, ady
+    cdef public float x, y, z, dx, dy, dz, adx, ady
 
-    def __init__(self):
+    def __cinit__(self):
         self.x = 0.0
         self.y = 2.5
         self.z = 0.0
@@ -57,40 +120,40 @@ cdef class Camera(object):
         def __set__(self, value):
             self.x, self.y, self.z = value
 
-    property arx:
+    cdef float arx(self):
         """
         Angle de l'axe x, en radians.
         """
-        def __get__(self):
-            return self.adx * pi / 180.0
+        return self.adx * M_PI / 180.0
 
-    property ary:
+    cdef float ary(self):
         """
         Angle de l'axe y, en radians.
         """
-        def __get__(self):
-            return self.ady * pi / 180.0
+        return self.ady * M_PI / 180.0
 
     def get_spot_position(self):
         return -self.x, self.y, -self.z
 
     def get_spot_direction(self):
+        cdef float arx = self.arx()
+        cdef float ary = self.ary()
         return (
-            -sin(self.ary) * cos(self.arx),
-            sin(self.arx),
-            -cos(self.ary) * cos(self.arx),
+            -sin(ary) * cos(arx),
+            sin(arx),
+            -cos(ary) * cos(arx),
         )
 
     def update_gl(self):
-        glRotate(self.adx, -1.0, 0.0, 0.0)
-        glRotate(self.ady, 0.0, -1.0, 0.0)
-        glTranslate(*self.position)
+        glRotatef(self.adx, -1.0, 0.0, 0.0)
+        glRotatef(self.ady, 0.0, -1.0, 0.0)
+        glTranslatef(*self.position)
 
     def update(self):
-        self.adx = limit_double(self.adx, -90.0, 90.0)
+        self.adx = limit_float(self.adx, -90.0, 90.0)
         self.ady %= 360.0
-        a = self.ary
-        a_side = a + pi / 2
+        cdef float a = self.ary()
+        cdef float a_side = a + M_PI_2
         self.x += self.dz * sin(a) + self.dx * sin(a_side)
         self.y += self.dy
         self.z += self.dz * cos(a) + self.dx * cos(a_side)
@@ -105,53 +168,53 @@ cdef class World(object):
     cdef readonly int per_cube
     cdef np.ndarray vertices, indices, texcoords
 
-    def __init__(self, parent):
+    def __cinit__(self, parent):
         self.parent = parent
 
     def create(self):
         start = datetime.datetime.now()
         print('Création du monde…')
 
-        n = 300
+        cdef int n = 300
 
-        cdef np.ndarray[float, ndim=2] cube_vertices = array([
-            [0, 0, 0], # Front  bottom right
-            [1, 0, 0], # Front  bottom left
-            [1, 1, 0], # Front  top    left
-            [0, 1, 0], # Front  top    right
+        cdef np.ndarray cube_vertices = np.array([
+            0, 0, 0,  # Front  bottom right
+            1, 0, 0,  # Front  bottom left
+            1, 1, 0,  # Front  top    left
+            0, 1, 0,  # Front  top    right
 
-            [0, 1, 1], # Back   top    right
-            [1, 1, 1], # Back   top    left
-            [1, 0, 1], # Back   bottom left
-            [0, 0, 1], # Back   bottom right
+            0, 1, 1,  # Back   top    right
+            1, 1, 1,  # Back   top    left
+            1, 0, 1,  # Back   bottom left
+            0, 0, 1,  # Back   bottom right
 
             # Additional vertices to be able to apply the texture properly.
-            [1, 0, 1], # Bottom back   left
-            [0, 0, 1], # Bottom back   right
-            [0, 0, 0], # Bottom front  right
-            [1, 0, 0], # Bottom front  left
-        ], dtype=b'float32')
+            1, 0, 1,  # Bottom back   left
+            0, 0, 1,  # Bottom back   right
+            0, 0, 0,  # Bottom front  right
+            1, 0, 0,  # Bottom front  left
+        ]).reshape((12, 3))
         self.per_cube = len(cube_vertices)
-        self.vertices = concatenate(
+        self.vertices = np.concatenate(
             [cube_vertices + (x, 0, z)
              for x, z in product(range(-n // 2, n // 2), repeat=2)]
         ).astype(b'float32', copy=False)
         print('Chargement des points terminé.')
 
         # Modèle de cube avec de GL_QUADS.
-        self.indices = concatenate([array([
-            0, 1, 2, 3, # Front  face
-            7, 6, 5, 4, # Back   face
-            2, 3, 4, 5, # Top    face
-            1, 0, 7, 6, # Bottom face
-            8, 5, 2, 11, # Left   face
-            4, 9, 10, 3, # Right  face
+        self.indices = np.concatenate([np.array([
+            0, 1, 2, 3,   # Front  face
+            7, 6, 5, 4,   # Back   face
+            2, 3, 4, 5,   # Top    face
+            1, 0, 7, 6,   # Bottom face
+            8, 5, 2, 11,  # Left   face
+            4, 9, 10, 3,  # Right  face
         ]) + self.per_cube * x
             for x in range(n ** 2)]).astype(b'uint32', copy=False)
         print('Chargement des polygones terminé.')
 
         self.texcoords = np.tile(
-            array([[0, 0], [1, 0], [1, 1], [0, 1]]),
+            np.array([[0, 0], [1, 0], [1, 1], [0, 1]]),
             (len(self.vertices) / self.per_cube, 3, 1)).astype(b'int32')
         print('Chargement des textures terminé.')
 
@@ -206,14 +269,13 @@ class GLWidget(QtOpenGL.QGLWidget):
         glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
 
         mat_specular = (0.5,) * 4
-        mat_shininess = 100.0
         glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, mat_specular)
-        glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, mat_shininess)
+        glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 100.0)
 
         glEnable(GL_LIGHTING)
         glEnable(GL_LIGHT0)
         glEnable(GL_DEPTH_TEST)
-        glLightfv(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, 0.00005)
+        glLightf(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, 0.00005)
         glLightfv(GL_LIGHT0, GL_DIFFUSE, (0.7,) * 4)
 
         glEnable(GL_TEXTURE_2D)
@@ -252,10 +314,10 @@ class GLWidget(QtOpenGL.QGLWidget):
                 self.spot_position = spot_position
             spot_position = self.spot_position
         glLightiv(GL_LIGHT0, GL_SPOT_CUTOFF, self.parent.spot_slider.value())
-        glTranslate(*spot_position)
+        glTranslatef(*spot_position)
 
         glLightfv(GL_LIGHT0, GL_SPOT_DIRECTION, spot_direction)
-        glLightfv(GL_LIGHT0, GL_POSITION, (0.0, 0.0, 0.0) + (1.0,))
+        glLightfv(GL_LIGHT0, GL_POSITION, (0.0, 0.0, 0.0, 1.0,))
 
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
