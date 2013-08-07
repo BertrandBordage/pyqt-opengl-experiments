@@ -177,58 +177,82 @@ cdef class Camera(object):
 cdef class World(object):
     cdef parent
     cdef readonly int per_cube
-    cdef np.ndarray vertices, indices, texcoords
+    cdef np.ndarray vertices, texcoords, indices
+    cdef float* vertices_ptr
+    cdef int* texcoords_ptr
+    cdef unsigned int* indices_ptr
     cdef int indices_len
 
     def __cinit__(self, parent):
         self.parent = parent
 
-    def create(self):
-        start = datetime.datetime.now()
-        print('Création du monde…')
-
-        cdef int n = 300
-
+    cdef void create_vertices(self, int n):
         cdef np.ndarray cube_vertices = np.array([
-            0, 0, 0,  # Front  bottom right
-            1, 0, 0,  # Front  bottom left
-            1, 1, 0,  # Front  top    left
-            0, 1, 0,  # Front  top    right
+            0, 0, 0, # Front  bottom right
+            1, 0, 0, # Front  bottom left
+            1, 1, 0, # Front  top    left
+            0, 1, 0, # Front  top    right
 
-            0, 1, 1,  # Back   top    right
-            1, 1, 1,  # Back   top    left
-            1, 0, 1,  # Back   bottom left
-            0, 0, 1,  # Back   bottom right
+            0, 1, 1, # Back   top    right
+            1, 1, 1, # Back   top    left
+            1, 0, 1, # Back   bottom left
+            0, 0, 1, # Back   bottom right
 
             # Additional vertices to be able to apply the texture properly.
-            1, 0, 1,  # Bottom back   left
-            0, 0, 1,  # Bottom back   right
-            0, 0, 0,  # Bottom front  right
-            1, 0, 0,  # Bottom front  left
+            1, 0, 1, # Bottom back   left
+            0, 0, 1, # Bottom back   right
+            0, 0, 0, # Bottom front  right
+            1, 0, 0, # Bottom front  left
         ]).reshape((12, 3))
         self.per_cube = len(cube_vertices)
         self.vertices = np.concatenate(
             [cube_vertices + (x, 0, z)
              for x, z in product(range(-n // 2, n // 2), repeat=2)]
         ).astype(b'float32', copy=False)
-        print('Chargement des points terminé.')
 
+        # Builds a pointer for optimization.
+        cdef np.ndarray[float, ndim=2, mode='c'] vertices = self.vertices
+        self.vertices_ptr = &vertices[0, 0]
+
+    cdef void create_texture_coordinates(self):
         self.texcoords = np.tile(
             np.array([[0, 0], [1, 0], [1, 1], [0, 1]]),
             (len(self.vertices) / self.per_cube, 3, 1)).astype(b'int32')
-        print('Chargement des textures terminé.')
 
-        # Modèle de cube avec de GL_QUADS.
+        # Builds a pointer for optimization.
+        cdef np.ndarray[int, ndim=3, mode='c'] texcoords = self.texcoords
+        self.texcoords_ptr = &texcoords[0, 0, 0]
+
+    cdef void create_polygons(self, int n):
         self.indices = np.concatenate([np.array([
-            0, 1, 2, 3,   # Front  face
-            7, 6, 5, 4,   # Back   face
-            2, 3, 4, 5,   # Top    face
-            1, 0, 7, 6,   # Bottom face
-            8, 5, 2, 11,  # Left   face
-            4, 9, 10, 3,  # Right  face
+            0, 1, 2, 3, # Front  face
+            7, 6, 5, 4, # Back   face
+            2, 3, 4, 5, # Top    face
+            1, 0, 7, 6, # Bottom face
+            8, 5, 2, 11, # Left   face
+            4, 9, 10, 3, # Right  face
         ]) + self.per_cube * x
             for x in range(n ** 2)]).astype(b'uint32', copy=False)
+
+        # Builds a pointer for optimization.
+        cdef np.ndarray[unsigned int, ndim=1, mode='c'] indices = self.indices
+        self.indices_ptr = &indices[0]
+
         self.indices_len = len(self.indices)
+
+    def create(self):
+        start = datetime.datetime.now()
+        print('Création du monde…')
+
+        cdef int n = 400
+
+        self.create_vertices(n)
+        print('Chargement des points terminé.')
+
+        self.create_texture_coordinates()
+        print('Chargement des textures terminé.')
+
+        self.create_polygons(n)
         print('Chargement des polygones terminé.')
 
         print('Chargement du monde effectué en %s secondes'
@@ -238,17 +262,14 @@ cdef class World(object):
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
 
-        cdef np.ndarray[float, ndim=2, mode='c'] vertices = self.vertices
         glEnableClientState(GL_VERTEX_ARRAY)
-        glVertexPointer(3, GL_FLOAT, 0, &vertices[0, 0])
+        glVertexPointer(3, GL_FLOAT, 0, self.vertices_ptr)
 
-        cdef np.ndarray[int, ndim=3, mode='c'] texcoords = self.texcoords
         glEnableClientState(GL_TEXTURE_COORD_ARRAY)
-        glTexCoordPointer(2, GL_INT, 0, &texcoords[0, 0, 0])
+        glTexCoordPointer(2, GL_INT, 0, self.texcoords_ptr)
 
-        cdef np.ndarray[unsigned int, ndim=1, mode='c'] indices = self.indices
         glDrawElements(GL_QUADS, self.indices_len,
-                       GL_UNSIGNED_INT, &indices[0])
+                       GL_UNSIGNED_INT, self.indices_ptr)
 
     def update(self):
         cdef int action
