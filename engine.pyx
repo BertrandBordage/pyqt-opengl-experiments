@@ -272,7 +272,7 @@ cdef class World(object):
                        GL_UNSIGNED_INT, self.indices_ptr)
 
     def update(self):
-        cdef int action
+        cdef float action
         cdef np.ndarray random_cubes
         if self.parent.action is not None:
             action = self.parent.action
