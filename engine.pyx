@@ -204,37 +204,38 @@ cdef class World(object):
             1, 0, 0, # Bottom front  left
         ]).reshape((12, 3))
         self.per_cube = len(cube_vertices)
-        self.vertices = np.concatenate(
+        cdef np.ndarray[float, ndim=2, mode='c'] vertices = np.concatenate(
             [cube_vertices + (x, 0, z)
              for x, z in product(range(-n // 2, n // 2), repeat=2)]
         ).astype(b'float32', copy=False)
+        self.vertices = vertices
 
         # Builds a pointer for optimization.
-        cdef np.ndarray[float, ndim=2, mode='c'] vertices = self.vertices
         self.vertices_ptr = &vertices[0, 0]
 
     cdef void create_texture_coordinates(self):
-        self.texcoords = np.tile(
+        cdef np.ndarray[int, ndim=3, mode='c'] texcoords = np.tile(
             np.array([[0, 0], [1, 0], [1, 1], [0, 1]]),
             (len(self.vertices) / self.per_cube, 3, 1)).astype(b'int32')
 
         # Builds a pointer for optimization.
-        cdef np.ndarray[int, ndim=3, mode='c'] texcoords = self.texcoords
+        self.texcoords = texcoords
         self.texcoords_ptr = &texcoords[0, 0, 0]
 
     cdef void create_polygons(self, int n):
-        self.indices = np.concatenate([np.array([
-            0, 1, 2, 3, # Front  face
-            7, 6, 5, 4, # Back   face
-            2, 3, 4, 5, # Top    face
-            1, 0, 7, 6, # Bottom face
-            8, 5, 2, 11, # Left   face
-            4, 9, 10, 3, # Right  face
-        ]) + self.per_cube * x
-            for x in range(n ** 2)]).astype(b'uint32', copy=False)
+        cdef np.ndarray[unsigned int, ndim=1, mode='c'] indices = \
+            np.concatenate([np.array([
+                0, 1, 2, 3, # Front  face
+                7, 6, 5, 4, # Back   face
+                2, 3, 4, 5, # Top    face
+                1, 0, 7, 6, # Bottom face
+                8, 5, 2, 11, # Left   face
+                4, 9, 10, 3, # Right  face
+            ]) + self.per_cube * x
+                for x in range(n ** 2)]).astype(b'uint32', copy=False)
 
         # Builds a pointer for optimization.
-        cdef np.ndarray[unsigned int, ndim=1, mode='c'] indices = self.indices
+        self.indices = indices
         self.indices_ptr = &indices[0]
 
         self.indices_len = len(self.indices)
@@ -243,7 +244,7 @@ cdef class World(object):
         start = datetime.datetime.now()
         print('Création du monde…')
 
-        cdef int n = 400
+        cdef int n = 300
 
         self.create_vertices(n)
         print('Chargement des points terminé.')
