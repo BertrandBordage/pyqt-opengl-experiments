@@ -1,11 +1,15 @@
 # coding: utf-8
 
+#cython: cdivide=True
+
 from __future__ import unicode_literals, division
+from libc.math cimport cos, sin
 import datetime
 from itertools import product
-from math import cos, sin, pi
+from math import pi
 
 import numpy as np
+cimport numpy as np
 from numpy import array, concatenate
 from OpenGL import GLU
 from OpenGL.GL import *
@@ -29,12 +33,12 @@ class TextureImage(object):
         self.str = self.img.tostring()
 
 
-cpdef float limit_float(float f, float m, float M):
+cpdef double limit_double(double f, double m, double M):
     return m if f < m else M if f > M else f
 
 
 cdef class Camera(object):
-    cdef public float x, y, z, dx, dy, dz, adx, ady
+    cdef public double x, y, z, dx, dy, dz, adx, ady
 
     def __init__(self):
         self.x = 0.0
@@ -83,7 +87,7 @@ cdef class Camera(object):
         glTranslate(*self.position)
 
     def update(self):
-        self.adx = limit_float(self.adx, -90.0, 90.0)
+        self.adx = limit_double(self.adx, -90.0, 90.0)
         self.ady %= 360.0
         a = self.ary
         a_side = a + pi / 2
@@ -96,11 +100,94 @@ cdef class Camera(object):
             self.x, self.y, self.z, self.adx, self.ady)
 
 
+cdef class World(object):
+    cdef parent
+    cdef readonly int per_cube
+    cdef np.ndarray vertices, indices, texcoords
+
+    def __init__(self, parent):
+        self.parent = parent
+
+    def create(self):
+        start = datetime.datetime.now()
+        print('Création du monde…')
+
+        n = 300
+
+        cdef np.ndarray[float, ndim=2] cube_vertices = array([
+            [0, 0, 0], # Front  bottom right
+            [1, 0, 0], # Front  bottom left
+            [1, 1, 0], # Front  top    left
+            [0, 1, 0], # Front  top    right
+
+            [0, 1, 1], # Back   top    right
+            [1, 1, 1], # Back   top    left
+            [1, 0, 1], # Back   bottom left
+            [0, 0, 1], # Back   bottom right
+
+            # Additional vertices to be able to apply the texture properly.
+            [1, 0, 1], # Bottom back   left
+            [0, 0, 1], # Bottom back   right
+            [0, 0, 0], # Bottom front  right
+            [1, 0, 0], # Bottom front  left
+        ], dtype=b'float32')
+        self.per_cube = len(cube_vertices)
+        self.vertices = concatenate(
+            [cube_vertices + (x, 0, z)
+             for x, z in product(range(-n // 2, n // 2), repeat=2)]
+        ).astype(b'float32', copy=False)
+        print('Chargement des points terminé.')
+
+        # Modèle de cube avec de GL_QUADS.
+        self.indices = concatenate([array([
+            0, 1, 2, 3, # Front  face
+            7, 6, 5, 4, # Back   face
+            2, 3, 4, 5, # Top    face
+            1, 0, 7, 6, # Bottom face
+            8, 5, 2, 11, # Left   face
+            4, 9, 10, 3, # Right  face
+        ]) + self.per_cube * x
+            for x in range(n ** 2)]).astype(b'uint32', copy=False)
+        print('Chargement des polygones terminé.')
+
+        self.texcoords = np.tile(
+            array([[0, 0], [1, 0], [1, 1], [0, 1]]),
+            (len(self.vertices) / self.per_cube, 3, 1)).astype(b'int32')
+        print('Chargement des textures terminé.')
+
+        print('Chargement du monde effectué en %s secondes'
+              % (datetime.datetime.now() - start).total_seconds())
+
+    def update_gl(self):
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
+
+        glEnableClientState(GL_VERTEX_ARRAY)
+        glVertexPointerf(self.vertices)
+
+        glEnableClientState(GL_TEXTURE_COORD_ARRAY)
+        glTexCoordPointeri(self.texcoords)
+
+        glDrawElementsui(GL_QUADS, self.indices)
+
+    def update(self):
+        if self.parent.action:
+            random_cubes = np.random.randint(
+                len(self.vertices) / self.per_cube, size=250) * self.per_cube
+            for i in random_cubes:
+                self.vertices[i:i + self.per_cube] += (
+                    0, self.parent.action, 0)
+
+    def get_polygon_count(self):
+        return len(self.indices) / 4  # 4 points par face.
+
+
 class GLWidget(QtOpenGL.QGLWidget):
     def __init__(self, parent=None):
         self.parent = parent
         super(GLWidget, self).__init__(parent)
         self.camera = Camera()
+        self.world = World(self)
         self.action = None
         self.action_amount = 1.0
         self.spot_position = None
@@ -136,7 +223,7 @@ class GLWidget(QtOpenGL.QGLWidget):
                      0, GL_RGB, self.texture.width, self.texture.height,
                      0, GL_RGB, GL_UNSIGNED_BYTE, self.texture.str)
 
-        self.initGeometry()
+        self.world.create()
 
         self.last_time = datetime.datetime.now()
         self.current_time = datetime.datetime.now()
@@ -172,80 +259,14 @@ class GLWidget(QtOpenGL.QGLWidget):
 
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
-        aspect = self.parent.width / float(self.parent.height)
+        aspect = self.parent.width / self.parent.height
 
         GLU.gluPerspective(
             self.parent.fov_slider.value(), aspect, 1.0, 100000.0)
 
         self.camera.update_gl()
 
-        glMatrixMode(GL_MODELVIEW)
-        glLoadIdentity()
-
-        glEnableClientState(GL_VERTEX_ARRAY)
-        glVertexPointerf(self.vertices)
-
-        glEnableClientState(GL_TEXTURE_COORD_ARRAY)
-        glTexCoordPointeri(self.texcoords)
-
-        glDrawElementsui(GL_QUADS, self.indices)
-
-    def initGeometry(self):
-        start = datetime.datetime.now()
-        print('Création du monde…')
-
-        n = 300
-
-        cube_vertices = array([
-            [0, 0, 0],  # Front  bottom right
-            [1, 0, 0],  # Front  bottom left
-            [1, 1, 0],  # Front  top    left
-            [0, 1, 0],  # Front  top    right
-
-            [0, 1, 1],  # Back   top    right
-            [1, 1, 1],  # Back   top    left
-            [1, 0, 1],  # Back   bottom left
-            [0, 0, 1],  # Back   bottom right
-
-            # Additional vertices to be able to apply the texture properly.
-            [1, 0, 1],  # Bottom back   left
-            [0, 0, 1],  # Bottom back   right
-            [0, 0, 0],  # Bottom front  right
-            [1, 0, 0],  # Bottom front  left
-        ])
-        self.per_cube = len(cube_vertices)
-        self.vertices = concatenate(
-            [cube_vertices + (x, 0, z)
-             for x, z in product(range(-n // 2, n // 2), repeat=2)]
-        ).astype(b'float32', copy=False)
-        print('Chargement des points terminé.')
-
-        # Modèle de cube avec de GL_QUADS.
-        self.indices = concatenate([array([
-            0, 1, 2, 3,   # Front  face
-            7, 6, 5, 4,   # Back   face
-            2, 3, 4, 5,   # Top    face
-            1, 0, 7, 6,   # Bottom face
-            8, 5, 2, 11,  # Left   face
-            4, 9, 10, 3,  # Right  face
-        ]) + self.per_cube * x
-            for x in range(n ** 2)]).astype(b'uint32', copy=False)
-        print('Chargement des polygones terminé.')
-
-        self.texcoords = np.tile(
-            array([[0, 0], [1, 0], [1, 1], [0, 1]]),
-            (len(self.vertices) / self.per_cube, 3, 1)).astype(b'int32')
-        print('Chargement des textures terminé.')
-
-        print('Chargement du monde effectué en %s secondes'
-              % (datetime.datetime.now() - start).total_seconds())
-
-    def updateGeometry(self):
-        if self.action:
-            random_cubes = np.random.randint(
-                len(self.vertices) / self.per_cube, size=250) * self.per_cube
-            for i in random_cubes:
-                self.vertices[i:i + self.per_cube] += (0, self.action, 0)
+        self.world.update_gl()
 
     def updateDispatcher(self):
         self.camera.update()
@@ -259,7 +280,7 @@ class GLWidget(QtOpenGL.QGLWidget):
             'fps: %s %s polygones: %s' % (
                 self.frames_counted / seconds_elapsed,
                 self.camera.get_status(),
-                len(self.indices) / 4))  # 4 points par face.
+                self.world.get_polygon_count()))
 
     def updateFPS(self):
         self.last_time = self.current_time
@@ -294,7 +315,7 @@ class Window(QtGui.QMainWindow):
 
         geometry_timer = QtCore.QTimer(self)
         QtCore.QObject.connect(geometry_timer, QtCore.SIGNAL('timeout()'),
-                               self.glWidget.updateGeometry)
+                               self.glWidget.world.update)
         geometry_timer.start(1000.0 / 60.0)
 
         fps_timer = QtCore.QTimer(self)
