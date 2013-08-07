@@ -14,8 +14,7 @@ import numpy as np
 cimport numpy as np
 from OpenGL import GLU
 from OpenGL.GL import (
-    glLightfv, glLightiv, glMaterialfv, glTexImage2D, glTranslatef,
-    glVertexPointerf, glTexCoordPointeri, glDrawElementsui)
+    glLightfv, glLightiv, glMaterialfv, glTranslatef)
 from PIL import Image
 from PyQt4 import QtCore
 from PyQt4.QtCore import Qt
@@ -39,6 +38,9 @@ cdef extern from "GL/gl.h" nogil:
     ctypedef float        GLfloat
     ctypedef double       GLdouble
     int GL_UNSIGNED_BYTE
+    int GL_INT
+    int GL_UNSIGNED_INT
+    int GL_FLOAT
     int GL_COLOR_BUFFER_BIT
     int GL_DEPTH_BUFFER_BIT
     int GL_VERTEX_ARRAY
@@ -75,25 +77,34 @@ cdef extern from "GL/gl.h" nogil:
     void glMaterialf(GLenum face, GLenum pname, GLfloat param)
     # void glMaterialfv(GLenum face, GLenum pname, GLfloat *params)
     void glTexParameterf(GLenum target, GLenum pname, GLfloat param)
-    # void glTexImage2D(GLenum target, GLint level, GLint internalFormat,
-    #                   GLsizei width, GLsizei height, GLint border,
-    #                   GLenum format, GLenum type, GLvoid *pixels)
+    void glTexImage2D(GLenum target, GLint level, GLint internalFormat,
+                      GLsizei width, GLsizei height, GLint border,
+                      GLenum format, GLenum type, GLvoid *pixels)
     void glMatrixMode(GLenum mode)
     void glViewport(GLint x, GLint y, GLsizei width, GLsizei height)
     void glLoadIdentity()
     void glRotatef(GLfloat angle, GLfloat x, GLfloat y, GLfloat z)
     # void glTranslatef(GLfloat x, GLfloat y, GLfloat z)
     void glEnableClientState(GLenum cap)
-    # void glVertexPointerf(GLfloat *ptr)
-    # void glTexCoordPointeri(GLint *ptr)
-    # void glDrawElementsui(GLenum mode, GLuint *indices)
+    void glVertexPointer(GLint size, GLenum type, GLsizei stride, GLvoid *ptr)
+    void glTexCoordPointer(GLint size, GLenum type, GLsizei stride,
+                           GLvoid *ptr)
+    void glDrawElements(GLenum mode, GLsizei count, GLenum type,
+                        GLvoid *indices)
 
 
-class TextureImage(object):
-    def __init__(self, filename):
+cdef class TextureImage(object):
+    cdef img
+    cdef public:
+        int width, height
+        bytes str
+        np.ndarray array
+
+    def __cinit__(self, filename):
         self.img = Image.open(filename)
         self.width, self.height = self.img.size
         self.str = self.img.tostring()
+        self.array = np.array(list(self.str))
 
 
 cdef float limit_float(float f, float m, float M):
@@ -167,6 +178,7 @@ cdef class World(object):
     cdef parent
     cdef readonly int per_cube
     cdef np.ndarray vertices, indices, texcoords
+    cdef int indices_len
 
     def __cinit__(self, parent):
         self.parent = parent
@@ -201,6 +213,11 @@ cdef class World(object):
         ).astype(b'float32', copy=False)
         print('Chargement des points terminé.')
 
+        self.texcoords = np.tile(
+            np.array([[0, 0], [1, 0], [1, 1], [0, 1]]),
+            (len(self.vertices) / self.per_cube, 3, 1)).astype(b'int32')
+        print('Chargement des textures terminé.')
+
         # Modèle de cube avec de GL_QUADS.
         self.indices = np.concatenate([np.array([
             0, 1, 2, 3,   # Front  face
@@ -211,12 +228,8 @@ cdef class World(object):
             4, 9, 10, 3,  # Right  face
         ]) + self.per_cube * x
             for x in range(n ** 2)]).astype(b'uint32', copy=False)
+        self.indices_len = len(self.indices)
         print('Chargement des polygones terminé.')
-
-        self.texcoords = np.tile(
-            np.array([[0, 0], [1, 0], [1, 1], [0, 1]]),
-            (len(self.vertices) / self.per_cube, 3, 1)).astype(b'int32')
-        print('Chargement des textures terminé.')
 
         print('Chargement du monde effectué en %s secondes'
               % (datetime.datetime.now() - start).total_seconds())
@@ -225,21 +238,28 @@ cdef class World(object):
         glMatrixMode(GL_MODELVIEW)
         glLoadIdentity()
 
+        cdef np.ndarray[float, ndim=2, mode='c'] vertices = self.vertices
         glEnableClientState(GL_VERTEX_ARRAY)
-        glVertexPointerf(self.vertices)
+        glVertexPointer(3, GL_FLOAT, 0, &vertices[0, 0])
 
+        cdef np.ndarray[int, ndim=3, mode='c'] texcoords = self.texcoords
         glEnableClientState(GL_TEXTURE_COORD_ARRAY)
-        glTexCoordPointeri(self.texcoords)
+        glTexCoordPointer(2, GL_INT, 0, &texcoords[0, 0, 0])
 
-        glDrawElementsui(GL_QUADS, self.indices)
+        cdef np.ndarray[unsigned int, ndim=1, mode='c'] indices = self.indices
+        glDrawElements(GL_QUADS, self.indices_len,
+                       GL_UNSIGNED_INT, &indices[0])
 
     def update(self):
-        if self.parent.action:
+        cdef int action
+        cdef np.ndarray random_cubes
+        if self.parent.action is not None:
+            action = self.parent.action
             random_cubes = np.random.randint(
                 len(self.vertices) / self.per_cube, size=250) * self.per_cube
             for i in random_cubes:
                 self.vertices[i:i + self.per_cube] += (
-                    0, self.parent.action, 0)
+                    0, action, 0)
 
     def get_polygon_count(self):
         return len(self.indices) / 4  # 4 points par face.
@@ -281,9 +301,10 @@ class GLWidget(QtOpenGL.QGLWidget):
         glEnable(GL_TEXTURE_2D)
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+        cdef np.ndarray[char, ndim=1, mode='c'] texture_array = self.texture.array
         glTexImage2D(GL_TEXTURE_2D,
                      0, GL_RGB, self.texture.width, self.texture.height,
-                     0, GL_RGB, GL_UNSIGNED_BYTE, self.texture.str)
+                     0, GL_RGB, GL_UNSIGNED_BYTE, &texture_array[0])
 
         self.world.create()
 
