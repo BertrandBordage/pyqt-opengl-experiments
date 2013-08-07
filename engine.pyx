@@ -480,10 +480,10 @@ class Window(QtGui.QMainWindow):
         self.connect(self.exitAction, QtCore.SIGNAL('triggered()'), self.close)
 
     def initMenus(self):
-        menuBar = self.menuBar()
-        fileMenu = menuBar.addMenu('&File')
-        fileMenu.addAction(self.fullscreenAction)
-        fileMenu.addAction(self.exitAction)
+        menu_bar = self.menuBar()
+        file_menu = menu_bar.addMenu('&File')
+        file_menu.addAction(self.fullscreenAction)
+        file_menu.addAction(self.exitAction)
 
         self.controls = QGroupBox()
         controls_layout = QGridLayout()
