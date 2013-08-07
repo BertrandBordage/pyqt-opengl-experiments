@@ -204,9 +204,14 @@ cdef class World(object):
             1, 0, 0, # Bottom front  left
         ]).reshape((12, 3))
         self.per_cube = len(cube_vertices)
+        cdef np.ndarray indices_xz = np.array(np.arange(-n // 2, n // 2))[
+            np.rollaxis(np.indices((n,) * 2), 0, 2 + 1).reshape(-1, 2)]
+        cdef np.ndarray indices_xyz = np.zeros((n ** 2, 3))
+        indices_xyz[:, 0] = indices_xz[:, 0]
+        indices_xyz[:, 2] = indices_xz[:, 1]
         cdef np.ndarray[float, ndim=2, mode='c'] vertices = np.concatenate(
-            [cube_vertices + (x, 0, z)
-             for x, z in product(range(-n // 2, n // 2), repeat=2)]
+            [cube_vertices + offset
+             for offset in indices_xyz]
         ).astype(b'float32', copy=False)
         self.vertices = vertices
 
@@ -223,16 +228,17 @@ cdef class World(object):
         self.texcoords_ptr = &texcoords[0, 0, 0]
 
     cdef void create_polygons(self, int n):
-        cdef np.ndarray[unsigned int, ndim=1, mode='c'] indices = \
-            np.concatenate([np.array([
-                0, 1, 2, 3, # Front  face
-                7, 6, 5, 4, # Back   face
-                2, 3, 4, 5, # Top    face
-                1, 0, 7, 6, # Bottom face
+        cdef np.ndarray[unsigned int, ndim=1, mode='c'] indices = (
+            np.array([
+                0, 1, 2, 3,  # Front  face
+                7, 6, 5, 4,  # Back   face
+                2, 3, 4, 5,  # Top    face
+                1, 0, 7, 6,  # Bottom face
                 8, 5, 2, 11, # Left   face
                 4, 9, 10, 3, # Right  face
-            ]) + self.per_cube * x
-                for x in range(n ** 2)]).astype(b'uint32', copy=False)
+            ]) + np.arange(self.per_cube * n ** 2,
+                           step=self.per_cube).reshape((n ** 2, 1))
+        ).flatten().astype(b'uint32', copy=False)
 
         # Builds a pointer for optimization.
         self.indices = indices
@@ -247,16 +253,22 @@ cdef class World(object):
         cdef int n = 300
 
         self.create_vertices(n)
-        print('Chargement des points terminé.')
+        vertices_time = datetime.datetime.now()
+        print('Chargement des points terminé en %s secondes.'
+              % (vertices_time - start).total_seconds())
 
         self.create_texture_coordinates()
-        print('Chargement des textures terminé.')
+        texture_time = datetime.datetime.now()
+        print('Chargement des textures terminé en %s secondes.'
+              % (texture_time - vertices_time).total_seconds())
 
         self.create_polygons(n)
-        print('Chargement des polygones terminé.')
+        polygon_time = datetime.datetime.now()
+        print('Chargement des polygones terminé en %s secondes.'
+              % (polygon_time - vertices_time).total_seconds())
 
-        print('Chargement du monde effectué en %s secondes'
-              % (datetime.datetime.now() - start).total_seconds())
+        print('Temps total de chargement : %s secondes.'
+              % (polygon_time - start).total_seconds())
 
     def update_gl(self):
         glMatrixMode(GL_MODELVIEW)
