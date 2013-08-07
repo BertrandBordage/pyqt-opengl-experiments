@@ -1,4 +1,5 @@
 PyQt<5.0
 PyOpenGL
 numpy
+Cython
 Pillow
