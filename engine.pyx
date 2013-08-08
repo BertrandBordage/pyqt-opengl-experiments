@@ -42,6 +42,7 @@ cdef extern from "GL/gl.h" nogil:
     int GL_COLOR_BUFFER_BIT
     int GL_DEPTH_BUFFER_BIT
     int GL_VERTEX_ARRAY
+    int GL_NORMAL_ARRAY
     int GL_TEXTURE_COORD_ARRAY
     int GL_MODELVIEW
     int GL_PROJECTION
@@ -53,7 +54,6 @@ cdef extern from "GL/gl.h" nogil:
     int GL_TEXTURE_MIN_FILTER
     int GL_RGB
     int GL_NEAREST
-    int GL_FLAT
     int GL_COLOR_MATERIAL
     int GL_SPOT_CUTOFF
     int GL_QUADRATIC_ATTENUATION
@@ -67,7 +67,6 @@ cdef extern from "GL/gl.h" nogil:
     int GL_QUADS
     void glClear(GLbitfield mask)
     void glEnable(GLenum cap)
-    void glShadeModel(GLenum mode)
     void glLightf(GLenum light, GLenum pname, GLfloat param)
     # void glLightfv(GLenum light, GLenum pname, GLfloat *params)
     # void glLightiv(GLenum light, GLenum pname, GLint *params)
@@ -85,6 +84,7 @@ cdef extern from "GL/gl.h" nogil:
     # void glTranslatef(GLfloat x, GLfloat y, GLfloat z)
     void glEnableClientState(GLenum cap)
     void glVertexPointer(GLint size, GLenum type, GLsizei stride, GLvoid *ptr)
+    void glNormalPointer(GLenum type, GLsizei stride, GLvoid *ptr)
     void glTexCoordPointer(GLint size, GLenum type, GLsizei stride,
                            GLvoid *ptr)
     void glDrawElements(GLenum mode, GLsizei count, GLenum type,
@@ -175,8 +175,9 @@ cdef class Camera(object):
 cdef class World(object):
     cdef parent
     cdef readonly int per_cube
-    cdef np.ndarray vertices, texcoords, indices
+    cdef np.ndarray vertices, normals, texcoords, indices
     cdef float* vertices_ptr
+    cdef float* normals_ptr
     cdef int* texcoords_ptr
     cdef unsigned int* indices_ptr
     cdef int indices_len
@@ -186,21 +187,35 @@ cdef class World(object):
 
     cdef void create_vertices(self, int n):
         cdef np.ndarray cube_vertices = np.array([
-            0, 0, 0, # Front  bottom right
-            1, 0, 0, # Front  bottom left
-            1, 1, 0, # Front  top    left
-            0, 1, 0, # Front  top    right
+            0, 0, 0,  # Front  bottom right
+            1, 0, 0,  # Front  bottom left
+            1, 1, 0,  # Front  top    left
+            0, 1, 0,  # Front  top    right
 
-            0, 1, 1, # Back   top    right
-            1, 1, 1, # Back   top    left
-            1, 0, 1, # Back   bottom left
-            0, 0, 1, # Back   bottom right
+            0, 1, 1,  # Back   top    right
+            1, 1, 1,  # Back   top    left
+            1, 0, 1,  # Back   bottom left
+            0, 0, 1,  # Back   bottom right
 
-            # Additional vertices to be able to apply the texture properly.
-            1, 0, 1, # Bottom back   left
-            0, 0, 1, # Bottom back   right
-            0, 0, 0, # Bottom front  right
-            1, 0, 0, # Bottom front  left
+            0, 1, 0,  # Top    front  right
+            1, 1, 0,  # Top    front  left
+            1, 1, 1,  # Top    back   left
+            0, 1, 1,  # Top    back   right
+
+            0, 0, 1,  # Bottom back   right
+            1, 0, 1,  # Bottom back   left
+            1, 0, 0,  # Bottom front  left
+            0, 0, 0,  # Bottom front  right
+
+            1, 0, 0,  # Left   bottom front
+            1, 0, 1,  # Left   bottom back
+            1, 1, 1,  # Left   top    back
+            1, 1, 0,  # Left   top    front
+
+            0, 0, 1,  # Right  bottom back
+            0, 0, 0,  # Right  bottom front
+            0, 1, 0,  # Right  top    front
+            0, 1, 1,  # Right  top    back
         ]).reshape(-1, 3)
         self.per_cube = len(cube_vertices)
         # Taken from http://stackoverflow.com/a/4714857/1576438
@@ -218,10 +233,32 @@ cdef class World(object):
         # Builds a pointer for optimization.
         self.vertices_ptr = &vertices[0, 0]
 
+    cdef void create_normals(self):
+        cdef np.ndarray[float, ndim=1, mode='c'] normals = np.tile(
+            np.array([
+                # Front face
+                0,  0, -1,    0,  0, -1,    0,  0, -1,    0,  0, -1,
+                # Back face
+                0,  0,  1,    0,  0,  1,    0,  0,  1,    0,  0,  1,
+                # Top face
+                0,  1,  0,    0,  1,  0,    0,  1,  0,    0,  1,  0,
+                # Bottom face
+                0, -1,  0,    0, -1,  0,    0, -1,  0,    0, -1,  0,
+                # Left face
+                1,  0,  0,    1,  0,  0,    1,  0,  0,    1,  0,  0,
+                # Right face
+               -1,  0,  0,   -1,  0,  0,   -1,  0,  0,   -1,  0,  0,
+            ]),
+            (len(self.vertices) / self.per_cube)).astype(b'float32')
+
+        # Builds a pointer for optimization.
+        self.normals = normals
+        self.normals_ptr = &normals[0]
+
     cdef void create_texture_coordinates(self):
         cdef np.ndarray[int, ndim=3, mode='c'] texcoords = np.tile(
             np.array([[0, 0], [1, 0], [1, 1], [0, 1]]),
-            (len(self.vertices) / self.per_cube, 3, 1)).astype(b'int32')
+            (len(self.vertices) / self.per_cube, 6, 1)).astype(b'int32')
 
         # Builds a pointer for optimization.
         self.texcoords = texcoords
@@ -230,12 +267,12 @@ cdef class World(object):
     cdef void create_polygons(self, int n):
         cdef np.ndarray[unsigned int, ndim=1, mode='c'] indices = (
             np.array([
-                0, 1, 2, 3,  # Front  face
-                7, 6, 5, 4,  # Back   face
-                2, 3, 4, 5,  # Top    face
-                1, 0, 7, 6,  # Bottom face
-                8, 5, 2, 11, # Left   face
-                4, 9, 10, 3, # Right  face
+                0, 1, 2, 3,     # Front  face
+                4, 5, 6, 7,     # Back   face
+                8, 9, 10, 11,   # Top    face
+                12, 13, 14, 15, # Bottom face
+                16, 17, 18, 19, # Left   face
+                20, 21, 22, 23, # Right  face
             ]) + np.arange(self.per_cube * n ** 2,
                            step=self.per_cube).reshape(-1, 1)
         ).flatten().astype(b'uint32', copy=False)
@@ -257,10 +294,15 @@ cdef class World(object):
         print('Chargement des points terminé en %s secondes.'
               % (vertices_time - start).total_seconds())
 
+        self.create_normals()
+        normals_time = datetime.datetime.now()
+        print('Chargement des vecteurs normaux terminé en %s secondes.'
+              % (normals_time - vertices_time).total_seconds())
+
         self.create_texture_coordinates()
         texture_time = datetime.datetime.now()
         print('Chargement des textures terminé en %s secondes.'
-              % (texture_time - vertices_time).total_seconds())
+              % (texture_time - normals_time).total_seconds())
 
         self.create_polygons(n)
         polygon_time = datetime.datetime.now()
@@ -276,6 +318,9 @@ cdef class World(object):
 
         glEnableClientState(GL_VERTEX_ARRAY)
         glVertexPointer(3, GL_FLOAT, 0, self.vertices_ptr)
+
+        glEnableClientState(GL_NORMAL_ARRAY)
+        glNormalPointer(GL_FLOAT, 0, self.normals_ptr)
 
         glEnableClientState(GL_TEXTURE_COORD_ARRAY)
         glTexCoordPointer(2, GL_INT, 0, self.texcoords_ptr)
@@ -315,8 +360,6 @@ class GLWidget(QtOpenGL.QGLWidget):
 
     def initializeGL(self):
         self.qglClearColor(QtGui.QColor(0, 0, 150))
-
-        glShadeModel(GL_FLAT)
 
         glEnable(GL_COLOR_MATERIAL)
         glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
@@ -371,7 +414,7 @@ class GLWidget(QtOpenGL.QGLWidget):
         glTranslatef(*spot_position)
 
         glLightfv(GL_LIGHT0, GL_SPOT_DIRECTION, spot_direction)
-        glLightfv(GL_LIGHT0, GL_POSITION, (0.0, 0.0, 0.0, 1.0,))
+        glLightfv(GL_LIGHT0, GL_POSITION, (0.0, 0.0, 0.0, 1.0))
 
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
