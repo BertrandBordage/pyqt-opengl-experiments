@@ -8,7 +8,6 @@
 from __future__ import unicode_literals, division
 from libc.math cimport cos, sin, M_PI, M_PI_2
 import datetime
-from itertools import product
 
 import numpy as np
 cimport numpy as np
