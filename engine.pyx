@@ -224,10 +224,9 @@ cdef class World(object):
         cdef np.ndarray indices_xyz = np.zeros((n ** 2, 3))
         indices_xyz[:, 0] = indices_xz[:, 0]
         indices_xyz[:, 2] = indices_xz[:, 1]
-        cdef np.ndarray[float, ndim=2, mode='c'] vertices = np.concatenate(
-            [cube_vertices + offset
-             for offset in indices_xyz]
-        ).astype(b'float32', copy=False)
+        cdef np.ndarray[float, ndim=2, mode='c'] vertices = (
+            cube_vertices + indices_xyz.reshape(-1, 1, 3)
+        ).reshape(-1, 3).astype(b'float32', copy=False)
         self.vertices = vertices
 
         # Builds a pointer for optimization.
