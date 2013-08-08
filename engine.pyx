@@ -187,35 +187,35 @@ cdef class World(object):
 
     cdef void create_vertices(self, int n):
         cdef np.ndarray cube_vertices = np.array([
-            0, 0, 0,  # Front  bottom right
-            1, 0, 0,  # Front  bottom left
             1, 1, 0,  # Front  top    left
             0, 1, 0,  # Front  top    right
+            0, 0, 0,  # Front  bottom right
+            1, 0, 0,  # Front  bottom left
 
             0, 1, 1,  # Back   top    right
             1, 1, 1,  # Back   top    left
             1, 0, 1,  # Back   bottom left
             0, 0, 1,  # Back   bottom right
 
-            0, 1, 0,  # Top    front  right
-            1, 1, 0,  # Top    front  left
             1, 1, 1,  # Top    back   left
             0, 1, 1,  # Top    back   right
+            0, 1, 0,  # Top    front  right
+            1, 1, 0,  # Top    front  left
 
-            0, 0, 1,  # Bottom back   right
-            1, 0, 1,  # Bottom back   left
             1, 0, 0,  # Bottom front  left
             0, 0, 0,  # Bottom front  right
+            0, 0, 1,  # Bottom back   right
+            1, 0, 1,  # Bottom back   left
 
-            1, 0, 0,  # Left   bottom front
-            1, 0, 1,  # Left   bottom back
             1, 1, 1,  # Left   top    back
             1, 1, 0,  # Left   top    front
+            1, 0, 0,  # Left   bottom front
+            1, 0, 1,  # Left   bottom back
 
-            0, 0, 1,  # Right  bottom back
-            0, 0, 0,  # Right  bottom front
             0, 1, 0,  # Right  top    front
             0, 1, 1,  # Right  top    back
+            0, 0, 1,  # Right  bottom back
+            0, 0, 0,  # Right  bottom front
         ]).reshape(-1, 3)
         self.per_cube = len(cube_vertices)
         # Taken from http://stackoverflow.com/a/4714857/1576438
