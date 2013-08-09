@@ -20,7 +20,7 @@ from PyQt4 import QtGui
 from PyQt4 import QtOpenGL
 from PyQt4.QtGui import (
     QPixmap, QCursor, QSlider, QGroupBox, QGridLayout, QLabel, QDockWidget)
-from diamond_square import build_height_map
+from diamond_square cimport build_height_map
 
 
 from OpenGL.arrays import numpymodule
@@ -140,7 +140,7 @@ cdef class Cube(object):
             0, 1, 1,  # Right  top    back
             0, 0, 1,  # Right  bottom back
             0, 0, 0,  # Right  bottom front
-        ]).reshape(-1, 3)
+        ], dtype=b'float32').reshape(-1, 3)
 
         self.normals = np.array([
             # Front face
@@ -155,9 +155,10 @@ cdef class Cube(object):
             1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0,
             # Right face
             -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0,
-        ])
+        ], dtype=b'float32')
 
-        self.texcoords = np.array([[0, 0], [1, 0], [1, 1], [0, 1]])
+        self.texcoords = np.array([[0, 0], [1, 0], [1, 1], [0, 1]],
+                                  dtype=b'int32')
 
         self.indices = np.array([
             0, 1, 2, 3,  # Front  face
@@ -166,7 +167,7 @@ cdef class Cube(object):
             12, 13, 14, 15,  # Bottom face
             16, 17, 18, 19,  # Left   face
             20, 21, 22, 23,  # Right  face
-        ])
+        ], dtype=b'uint32')
 
 
 cdef float limit_float(float f, float m, float M):
@@ -252,46 +253,48 @@ cdef class World(object):
         self.cube = Cube()
 
     cdef void create_vertices(self, int n):
-        cdef np.ndarray cube_vertices = self.cube.vertices
+        cdef np.ndarray[float, ndim=2] cube_vertices, indices_xz, indices_xyz
+        cube_vertices = self.cube.vertices
         self.per_cube = len(cube_vertices)
         # Taken from http://stackoverflow.com/a/4714857/1576438
-        cdef np.ndarray indices_xz = np.array(np.arange(-n // 2, n // 2))[
+        indices_xz = np.arange(-n // 2, n // 2, dtype=b'float32')[
             np.rollaxis(np.indices((n,) * 2), 0, 2 + 1).reshape(-1, 2)]
-        cdef np.ndarray indices_xyz = np.zeros((n ** 2, 3))
+        indices_xyz = np.zeros((n ** 2, 3), dtype=b'float32')
         indices_xyz[:, 0] = indices_xz[:, 0]
-        indices_xyz[:, 1] = (build_height_map(n).flatten()).astype(b'int')
+        indices_xyz[:, 1] = (build_height_map(n).flatten())
         indices_xyz[:, 2] = indices_xz[:, 1]
-        cdef np.ndarray[float, ndim=2, mode='c'] vertices = (
+        cdef np.ndarray[float, ndim=2] vertices = (
             cube_vertices + indices_xyz.reshape(-1, 1, 3)
-        ).reshape(-1, 3).astype(b'float32', copy=False)
+        ).reshape(-1, 3)
         self.vertices = vertices
 
         # Builds a pointer for optimization.
         self.vertices_ptr = &vertices[0, 0]
 
     cdef void create_normals(self):
-        cdef np.ndarray[float, ndim=1, mode='c'] normals = np.tile(
+        cdef np.ndarray[float, ndim=1] normals = np.tile(
             self.cube.normals,
-            (len(self.vertices) / self.per_cube)).astype(b'float32')
+            (len(self.vertices) / self.per_cube))
 
         # Builds a pointer for optimization.
         self.normals = normals
         self.normals_ptr = &normals[0]
 
     cdef void create_texture_coordinates(self):
-        cdef np.ndarray[int, ndim=3, mode='c'] texcoords = np.tile(
+        cdef np.ndarray[int, ndim=3] texcoords = np.tile(
             self.cube.texcoords,
-            (len(self.vertices) / self.per_cube, 6, 1)).astype(b'int32')
+            (len(self.vertices) / self.per_cube, 6, 1))
 
         # Builds a pointer for optimization.
         self.texcoords = texcoords
         self.texcoords_ptr = &texcoords[0, 0, 0]
 
     cdef void create_polygons(self, int n):
-        cdef np.ndarray[unsigned int, ndim=1, mode='c'] indices = (
-             self.cube.indices + np.arange(self.per_cube * n ** 2,
-                           step=self.per_cube).reshape(-1, 1)
-        ).flatten().astype(b'uint32', copy=False)
+        cdef np.ndarray[unsigned int, ndim=1] indices = (
+             self.cube.indices + np.arange(
+                 self.per_cube * n ** 2, step=self.per_cube,
+                 dtype=b'uint32').reshape(-1, 1)
+        ).flatten()
 
         # Builds a pointer for optimization.
         self.indices = indices
@@ -393,7 +396,7 @@ class GLWidget(QtOpenGL.QGLWidget):
         glEnable(GL_TEXTURE_2D)
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
-        cdef np.ndarray[char, ndim=1, mode='c'] texture_array = self.texture.array
+        cdef np.ndarray[char, ndim=1] texture_array = self.texture.array
         glTexImage2D(GL_TEXTURE_2D,
                      0, GL_RGB, self.texture.width, self.texture.height,
                      0, GL_RGB, GL_UNSIGNED_BYTE, &texture_array[0])

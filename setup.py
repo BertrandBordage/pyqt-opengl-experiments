@@ -3,7 +3,10 @@ from distutils.extension import Extension
 from Cython.Distutils import build_ext
 
 
-ext_modules = [Extension('engine', ['engine.pyx'], libraries=['GL'])]
+ext_modules = [
+    Extension('diamond_square', ['diamond_square.pyx']),
+    Extension('engine', ['engine.pyx'], libraries=['GL']),
+]
 
 
 setup(
