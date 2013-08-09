@@ -20,6 +20,7 @@ from PyQt4 import QtGui
 from PyQt4 import QtOpenGL
 from PyQt4.QtGui import (
     QPixmap, QCursor, QSlider, QGroupBox, QGridLayout, QLabel, QDockWidget)
+from diamond_square import build_height_map
 
 
 from OpenGL.arrays import numpymodule
@@ -105,6 +106,69 @@ cdef class TextureImage(object):
         self.array = np.array(list(self.str))
 
 
+cdef class Cube(object):
+    cdef np.ndarray vertices, normals, texcoords, indices
+
+    def __cinit__(self):
+        self.vertices = np.array([
+            1, 1, 0,  # Front  top    left
+            0, 1, 0,  # Front  top    right
+            0, 0, 0,  # Front  bottom right
+            1, 0, 0,  # Front  bottom left
+
+            0, 1, 1,  # Back   top    right
+            1, 1, 1,  # Back   top    left
+            1, 0, 1,  # Back   bottom left
+            0, 0, 1,  # Back   bottom right
+
+            1, 1, 1,  # Top    back   left
+            0, 1, 1,  # Top    back   right
+            0, 1, 0,  # Top    front  right
+            1, 1, 0,  # Top    front  left
+
+            1, 0, 0,  # Bottom front  left
+            0, 0, 0,  # Bottom front  right
+            0, 0, 1,  # Bottom back   right
+            1, 0, 1,  # Bottom back   left
+
+            1, 1, 1,  # Left   top    back
+            1, 1, 0,  # Left   top    front
+            1, 0, 0,  # Left   bottom front
+            1, 0, 1,  # Left   bottom back
+
+            0, 1, 0,  # Right  top    front
+            0, 1, 1,  # Right  top    back
+            0, 0, 1,  # Right  bottom back
+            0, 0, 0,  # Right  bottom front
+        ]).reshape(-1, 3)
+
+        self.normals = np.array([
+            # Front face
+            0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1,
+            # Back face
+            0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1,
+            # Top face
+            0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0,
+            # Bottom face
+            0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0,
+            # Left face
+            1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0,
+            # Right face
+            -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0,
+        ])
+
+        self.texcoords = np.array([[0, 0], [1, 0], [1, 1], [0, 1]])
+
+        self.indices = np.array([
+            0, 1, 2, 3,  # Front  face
+            4, 5, 6, 7,  # Back   face
+            8, 9, 10, 11,  # Top    face
+            12, 13, 14, 15,  # Bottom face
+            16, 17, 18, 19,  # Left   face
+            20, 21, 22, 23,  # Right  face
+        ])
+
+
 cdef float limit_float(float f, float m, float M):
     return m if f < m else M if f > M else f
 
@@ -174,6 +238,7 @@ cdef class Camera(object):
 
 cdef class World(object):
     cdef parent
+    cdef Cube cube
     cdef readonly int per_cube
     cdef np.ndarray vertices, normals, texcoords, indices
     cdef float* vertices_ptr
@@ -184,45 +249,17 @@ cdef class World(object):
 
     def __cinit__(self, parent):
         self.parent = parent
+        self.cube = Cube()
 
     cdef void create_vertices(self, int n):
-        cdef np.ndarray cube_vertices = np.array([
-            1, 1, 0,  # Front  top    left
-            0, 1, 0,  # Front  top    right
-            0, 0, 0,  # Front  bottom right
-            1, 0, 0,  # Front  bottom left
-
-            0, 1, 1,  # Back   top    right
-            1, 1, 1,  # Back   top    left
-            1, 0, 1,  # Back   bottom left
-            0, 0, 1,  # Back   bottom right
-
-            1, 1, 1,  # Top    back   left
-            0, 1, 1,  # Top    back   right
-            0, 1, 0,  # Top    front  right
-            1, 1, 0,  # Top    front  left
-
-            1, 0, 0,  # Bottom front  left
-            0, 0, 0,  # Bottom front  right
-            0, 0, 1,  # Bottom back   right
-            1, 0, 1,  # Bottom back   left
-
-            1, 1, 1,  # Left   top    back
-            1, 1, 0,  # Left   top    front
-            1, 0, 0,  # Left   bottom front
-            1, 0, 1,  # Left   bottom back
-
-            0, 1, 0,  # Right  top    front
-            0, 1, 1,  # Right  top    back
-            0, 0, 1,  # Right  bottom back
-            0, 0, 0,  # Right  bottom front
-        ]).reshape(-1, 3)
+        cdef np.ndarray cube_vertices = self.cube.vertices
         self.per_cube = len(cube_vertices)
         # Taken from http://stackoverflow.com/a/4714857/1576438
         cdef np.ndarray indices_xz = np.array(np.arange(-n // 2, n // 2))[
             np.rollaxis(np.indices((n,) * 2), 0, 2 + 1).reshape(-1, 2)]
         cdef np.ndarray indices_xyz = np.zeros((n ** 2, 3))
         indices_xyz[:, 0] = indices_xz[:, 0]
+        indices_xyz[:, 1] = (build_height_map(n).flatten()).astype(b'int')
         indices_xyz[:, 2] = indices_xz[:, 1]
         cdef np.ndarray[float, ndim=2, mode='c'] vertices = (
             cube_vertices + indices_xyz.reshape(-1, 1, 3)
@@ -234,20 +271,7 @@ cdef class World(object):
 
     cdef void create_normals(self):
         cdef np.ndarray[float, ndim=1, mode='c'] normals = np.tile(
-            np.array([
-                # Front face
-                0,  0, -1,    0,  0, -1,    0,  0, -1,    0,  0, -1,
-                # Back face
-                0,  0,  1,    0,  0,  1,    0,  0,  1,    0,  0,  1,
-                # Top face
-                0,  1,  0,    0,  1,  0,    0,  1,  0,    0,  1,  0,
-                # Bottom face
-                0, -1,  0,    0, -1,  0,    0, -1,  0,    0, -1,  0,
-                # Left face
-                1,  0,  0,    1,  0,  0,    1,  0,  0,    1,  0,  0,
-                # Right face
-               -1,  0,  0,   -1,  0,  0,   -1,  0,  0,   -1,  0,  0,
-            ]),
+            self.cube.normals,
             (len(self.vertices) / self.per_cube)).astype(b'float32')
 
         # Builds a pointer for optimization.
@@ -256,7 +280,7 @@ cdef class World(object):
 
     cdef void create_texture_coordinates(self):
         cdef np.ndarray[int, ndim=3, mode='c'] texcoords = np.tile(
-            np.array([[0, 0], [1, 0], [1, 1], [0, 1]]),
+            self.cube.texcoords,
             (len(self.vertices) / self.per_cube, 6, 1)).astype(b'int32')
 
         # Builds a pointer for optimization.
@@ -265,14 +289,7 @@ cdef class World(object):
 
     cdef void create_polygons(self, int n):
         cdef np.ndarray[unsigned int, ndim=1, mode='c'] indices = (
-            np.array([
-                0, 1, 2, 3,     # Front  face
-                4, 5, 6, 7,     # Back   face
-                8, 9, 10, 11,   # Top    face
-                12, 13, 14, 15, # Bottom face
-                16, 17, 18, 19, # Left   face
-                20, 21, 22, 23, # Right  face
-            ]) + np.arange(self.per_cube * n ** 2,
+             self.cube.indices + np.arange(self.per_cube * n ** 2,
                            step=self.per_cube).reshape(-1, 1)
         ).flatten().astype(b'uint32', copy=False)
 
@@ -286,7 +303,7 @@ cdef class World(object):
         start = datetime.datetime.now()
         print('Création du monde…')
 
-        cdef int n = 300
+        cdef int n = 256
 
         self.create_vertices(n)
         vertices_time = datetime.datetime.now()
