@@ -353,8 +353,7 @@ cdef class World(object):
         cdef np.ndarray[float, ndim=2] vertices = self.vertices
         cdef np.ndarray[long, ndim=1] random_cubes
         cdef int n
-        cdef long i
-        cdef long per_cube = self.per_cube
+        cdef long i, per_cube = self.per_cube
         DEF moved_cubes = 500
 
         if self.parent.action is not None:
