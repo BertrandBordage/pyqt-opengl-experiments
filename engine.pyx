@@ -170,7 +170,7 @@ cdef class Cube(object):
         ], dtype=b'uint32')
 
 
-cdef float limit_float(float f, float m, float M):
+cdef inline float limit_float(float f, float m, float M):
     return m if f < m else M if f > M else f
 
 

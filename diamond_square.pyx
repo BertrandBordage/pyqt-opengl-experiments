@@ -5,20 +5,16 @@
 # cython: c_string_type=bytes
 
 from __future__ import unicode_literals, division
-from libc.stdlib cimport rand, RAND_MAX
 import numpy as np
 cimport numpy as np
 from PIL import Image
-
-
-cpdef float uniform(float a, float b):
-    return a + (b - a) * rand() / RAND_MAX
+from utils cimport uniform
 
 
 i = 0
 
 
-cdef void save_to_img(np.ndarray m):
+cdef inline void save_to_img(np.ndarray m):
     global i
     cdef float mini = m.min()
     if mini < 0:
@@ -30,19 +26,19 @@ cdef void save_to_img(np.ndarray m):
     i += 1
 
 
-cdef int _get_real_min(int mini, int size):
+cdef inline int _get_real_min(int mini, int size):
     if -size < mini < 0:
         return mini - 1
     return mini
 
 
-cdef int _get_real_max(int maxi, int size):
+cdef inline int _get_real_max(int maxi, int size):
     if maxi >= size:
         return maxi - (size - 1)
     return maxi
 
 
-cdef tuple get_inf_sup_coords(int x, int y, int step, int size):
+cdef inline tuple get_inf_sup_coords(int x, int y, int step, int size):
     cdef int xmin, xmax, ymin, ymax
     xmin = _get_real_min(x - step, size)
     ymin = _get_real_min(y - step, size)
