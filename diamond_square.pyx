@@ -1,7 +1,7 @@
 # coding: utf-8
 
 # cython: boundscheck=False
-# cython: cdivide=True
+# cython: cdivision=True
 # cython: c_string_type=bytes
 
 from __future__ import unicode_literals, division
@@ -50,6 +50,7 @@ cdef tuple get_inf_sup_coords(int x, int y, int step, int size):
     ymax = _get_real_max(y + step, size)
     return xmin, xmax, ymin, ymax
 
+
 cpdef np.ndarray[double, ndim=2] build_height_map(
         int size, int amplitude=15, int smoothing=10, bint save=False):
     cdef int orig_size, step, x, y, xmin, xmax, ymin, ymax
@@ -61,7 +62,7 @@ cpdef np.ndarray[double, ndim=2] build_height_map(
 
     step = size // 2
     while True:
-        random_coef = step / smoothing
+        random_coef = <double>step / <double>smoothing
         # Diamond
         for x from step <= x < size by step * 2:
             for y from step <= y < size by step * 2:

@@ -2,7 +2,7 @@
 
 # cython: boundscheck=False
 # cython: wraparound=False
-# cython: cdivide=True
+# cython: cdivision=True
 # cython: c_string_type=bytes
 
 from __future__ import unicode_literals, division
