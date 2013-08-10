@@ -5,10 +5,14 @@
 # cython: c_string_type=bytes
 
 from __future__ import unicode_literals, division
-from random import uniform
+from libc.stdlib cimport rand, RAND_MAX
 import numpy as np
 cimport numpy as np
 from PIL import Image
+
+
+cpdef float uniform(float a, float b):
+    return a + (b - a) * rand() / RAND_MAX
 
 
 i = 0
@@ -26,13 +30,13 @@ cdef void save_to_img(np.ndarray m):
     i += 1
 
 
-cdef int _get_real_min(int mini, int size) nogil:
+cdef int _get_real_min(int mini, int size):
     if -size < mini < 0:
         return mini - 1
     return mini
 
 
-cdef int _get_real_max(int maxi, int size) nogil:
+cdef int _get_real_max(int maxi, int size):
     if maxi >= size:
         return maxi - (size - 1)
     return maxi
@@ -40,11 +44,10 @@ cdef int _get_real_max(int maxi, int size) nogil:
 
 cdef tuple get_inf_sup_coords(int x, int y, int step, int size):
     cdef int xmin, xmax, ymin, ymax
-    with nogil:
-        xmin = _get_real_min(x - step, size)
-        ymin = _get_real_min(y - step, size)
-        xmax = _get_real_max(x + step, size)
-        ymax = _get_real_max(y + step, size)
+    xmin = _get_real_min(x - step, size)
+    ymin = _get_real_min(y - step, size)
+    xmax = _get_real_max(x + step, size)
+    ymax = _get_real_max(y + step, size)
     return xmin, xmax, ymin, ymax
 
 cpdef np.ndarray[double, ndim=2] build_height_map(
@@ -57,7 +60,7 @@ cpdef np.ndarray[double, ndim=2] build_height_map(
     cdef np.ndarray[double, ndim=2] m = np.zeros((size, size))
 
     step = size // 2
-    while step:
+    while True:
         random_coef = step / smoothing
         # Diamond
         for x from step <= x < size by step * 2:
