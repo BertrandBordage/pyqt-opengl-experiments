@@ -38,15 +38,6 @@ cdef inline int _get_real_max(int maxi, int size):
     return maxi
 
 
-cdef inline tuple get_inf_sup_coords(int x, int y, int step, int size):
-    cdef int xmin, xmax, ymin, ymax
-    xmin = _get_real_min(x - step, size)
-    ymin = _get_real_min(y - step, size)
-    xmax = _get_real_max(x + step, size)
-    ymax = _get_real_max(y + step, size)
-    return xmin, xmax, ymin, ymax
-
-
 cpdef np.ndarray[double, ndim=2] build_height_map(
         int size, int amplitude=15, int smoothing=10, bint save=False):
     cdef int orig_size, step, x, y, xmin, xmax, ymin, ymax
@@ -59,21 +50,31 @@ cpdef np.ndarray[double, ndim=2] build_height_map(
     step = size // 2
     while True:
         random_coef = <double>step / <double>smoothing
+
         # Diamond
         for x from step <= x < size by step * 2:
             for y from step <= y < size by step * 2:
-                xmin, xmax, ymin, ymax = get_inf_sup_coords(x, y, step, size)
+                xmin = _get_real_min(x - step, size)
+                ymin = _get_real_min(y - step, size)
+                xmax = _get_real_max(x + step, size)
+                ymax = _get_real_max(y + step, size)
                 m[x, y] = (m[xmin, ymin] + m[xmax, ymin]
                            + m[xmin, ymax] + m[xmax, ymax]
                            + uniform(-random_coef, random_coef)) / 4
+
         # Square
         for x from 0 <= x < size by step:
             for y from 0 <= y < size by step:
                 if m[x, y]:
                     continue
-                xmin, xmax, ymin, ymax = get_inf_sup_coords(x, y, step, size)
+
+                xmin = _get_real_min(x - step, size)
+                ymin = _get_real_min(y - step, size)
+                xmax = _get_real_max(x + step, size)
+                ymax = _get_real_max(y + step, size)
                 m[x, y] = (m[x, ymin] + m[xmin, y]
                            + m[xmax, y] + m[x, ymax]) / 4
+
         if step == 1:
             break
         step //= 2

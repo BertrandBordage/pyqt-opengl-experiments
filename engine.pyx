@@ -7,6 +7,7 @@
 
 from __future__ import unicode_literals, division
 from libc.math cimport cos, sin, M_PI, M_PI_2
+from libc.stdio cimport printf
 import datetime
 
 import numpy as np
@@ -304,32 +305,32 @@ cdef class World(object):
 
     def create(self):
         start = datetime.datetime.now()
-        print('Création du monde…')
+        printf('Création du monde…\n')
 
         cdef int n = 256
 
         self.create_vertices(n)
         vertices_time = datetime.datetime.now()
-        print('Chargement des points terminé en %s secondes.'
-              % (vertices_time - start).total_seconds())
+        printf('Chargement des points terminé en %f secondes.\n',
+               <double>(vertices_time - start).total_seconds())
 
         self.create_normals()
         normals_time = datetime.datetime.now()
-        print('Chargement des vecteurs normaux terminé en %s secondes.'
-              % (normals_time - vertices_time).total_seconds())
+        printf('Chargement des vecteurs normaux terminé en %f secondes.\n',
+               <double>(normals_time - vertices_time).total_seconds())
 
         self.create_texture_coordinates()
         texture_time = datetime.datetime.now()
-        print('Chargement des textures terminé en %s secondes.'
-              % (texture_time - normals_time).total_seconds())
+        printf('Chargement des textures terminé en %f secondes.\n',
+               <double>(texture_time - normals_time).total_seconds())
 
         self.create_polygons(n)
         polygon_time = datetime.datetime.now()
-        print('Chargement des polygones terminé en %s secondes.'
-              % (polygon_time - vertices_time).total_seconds())
+        printf('Chargement des polygones terminé en %f secondes.\n',
+               <double>(polygon_time - vertices_time).total_seconds())
 
-        print('Temps total de chargement : %s secondes.'
-              % (polygon_time - start).total_seconds())
+        printf('Temps total de chargement : %f secondes.\n',
+               <double>(polygon_time - start).total_seconds())
 
     def update_gl(self):
         glMatrixMode(GL_MODELVIEW)
@@ -348,15 +349,21 @@ cdef class World(object):
                        GL_UNSIGNED_INT, self.indices_ptr)
 
     def update(self):
-        cdef float action
-        cdef np.ndarray random_cubes
+        cdef tuple offset
+        cdef np.ndarray[float, ndim=2] vertices = self.vertices
+        cdef np.ndarray[long, ndim=1] random_cubes
+        cdef int n
+        cdef long i
+        cdef long per_cube = self.per_cube
+        DEF moved_cubes = 500
+
         if self.parent.action is not None:
-            action = self.parent.action
+            offset = (0.0, self.parent.action, 0.0)
             random_cubes = np.random.randint(
-                len(self.vertices) / self.per_cube, size=250) * self.per_cube
-            for i in random_cubes:
-                self.vertices[i:i + self.per_cube] += (
-                    0, action, 0)
+                len(vertices) / per_cube, size=moved_cubes) * per_cube
+            for n in range(moved_cubes):
+                i = random_cubes[n]
+                vertices[i:i + per_cube] += offset
 
     def get_polygon_count(self):
         return len(self.indices) / 4  # 4 points par face.
