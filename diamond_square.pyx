@@ -26,13 +26,13 @@ cdef inline void save_to_img(np.ndarray m):
     i += 1
 
 
-cdef inline int _get_real_min(int mini, int size):
+cdef inline int _get_real_min(int mini, int size) nogil:
     if -size < mini < 0:
         return mini - 1
     return mini
 
 
-cdef inline int _get_real_max(int maxi, int size):
+cdef inline int _get_real_max(int maxi, int size) nogil:
     if maxi >= size:
         return maxi - (size - 1)
     return maxi

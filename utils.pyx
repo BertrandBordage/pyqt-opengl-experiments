@@ -7,5 +7,5 @@
 from libc.stdlib cimport rand, RAND_MAX
 
 
-cdef inline float uniform(float a, float b):
+cdef inline float uniform(float a, float b) nogil:
     return a + (b - a) * rand() / RAND_MAX

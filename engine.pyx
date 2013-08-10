@@ -171,7 +171,7 @@ cdef class Cube(object):
         ], dtype=b'uint32')
 
 
-cdef inline float limit_float(float f, float m, float M):
+cdef inline float limit_float(float f, float m, float M) nogil:
     return m if f < m else M if f > M else f
 
 
@@ -195,13 +195,13 @@ cdef class Camera(object):
         def __set__(self, value):
             self.x, self.y, self.z = value
 
-    cdef float arx(self):
+    cdef inline float arx(self) nogil:
         """
         Angle de l'axe x, en radians.
         """
         return self.adx * M_PI / 180.0
 
-    cdef float ary(self):
+    cdef inline float ary(self) nogil:
         """
         Angle de l'axe y, en radians.
         """
