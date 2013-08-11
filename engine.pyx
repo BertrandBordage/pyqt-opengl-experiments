@@ -237,7 +237,7 @@ cdef class Camera(object):
         self.z += self.dz * cos(a) + self.dx * cos(a_side)
 
     cdef unicode get_status(self):
-        return 'x: %s  y: %s  z: %s  rotx: %s  roty: %s' % (
+        return 'x: %.2f  y: %.2f  z: %.2f  rotx: %.2f  roty: %.2f' % (
             self.x, self.y, self.z, self.adx, self.ady)
 
 
@@ -351,29 +351,30 @@ cdef class World(object):
                <double>(polygon_time - start).total_seconds())
 
     def initialize_gl(self):
-        with nogil:
-            glEnable(GL_COLOR_MATERIAL)
-            glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
+        glEnable(GL_COLOR_MATERIAL)
+        glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
 
-            glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, [0.5, 0.5, 0.5, 0.5])
-            glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 100.0)
+        glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, [0.5, 0.5, 0.5, 0.5])
+        glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 100.0)
 
-            glEnable(GL_LIGHTING)
-            glEnable(GL_LIGHT0)
-            glEnable(GL_DEPTH_TEST)
-            glLightf(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, 0.00005)
-            glLightfv(GL_LIGHT0, GL_DIFFUSE, [0.7, 0.7, 0.7, 0.7])
+        glEnable(GL_LIGHTING)
+        glEnable(GL_LIGHT0)
+        glEnable(GL_DEPTH_TEST)
+        glLightf(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, 0.00005)
+        glLightfv(GL_LIGHT0, GL_DIFFUSE, [0.7, 0.7, 0.7, 0.7])
 
-            glEnable(GL_TEXTURE_2D)
-            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
-            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
-            glTexImage2D(GL_TEXTURE_2D,
-                         0, GL_RGB, self.texture.width, self.texture.height,
-                         0, GL_RGB, GL_UNSIGNED_BYTE, self.texture.array_ptr)
+        glEnable(GL_TEXTURE_2D)
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+        glTexImage2D(GL_TEXTURE_2D,
+                     0, GL_RGB, self.texture.width, self.texture.height,
+                     0, GL_RGB, GL_UNSIGNED_BYTE, self.texture.array_ptr)
 
         self.create()
 
     def update_gl(self):
+        self.camera.update()
+
         cdef int spot_cutoff = self.parent.parent.spot_slider.value()
         cdef Coords spot_position = self.camera.get_spot_position(), \
                     spot_direction = self.camera.get_spot_direction(), \
@@ -382,50 +383,47 @@ cdef class World(object):
                              / self.parent.parent.height), \
                    fov = self.parent.parent.fov_slider.value()
 
-        with nogil:
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
-            if self.fixed_spot:
-                if self.new_fixed_spot:
-                    self.spot_position = spot_position
-                spot_position = self.spot_position
-            p = spot_position
-            glTranslatef(p.x, p.y, p.z)
+        if self.fixed_spot:
+            if self.new_fixed_spot:
+                self.spot_position = spot_position
+            spot_position = self.spot_position
+        p = spot_position
+        glTranslatef(p.x, p.y, p.z)
 
-            if self.fixed_spot:
-                if self.new_fixed_spot:
-                    self.spot_direction = spot_direction
-                    self.new_fixed_spot = False
-                spot_direction = self.spot_direction
-            d = spot_direction
-            glLighti(GL_LIGHT0, GL_SPOT_CUTOFF, spot_cutoff)
-            glLightfv(GL_LIGHT0, GL_SPOT_DIRECTION, [d.x, d.y, d.z])
-            glLightfv(GL_LIGHT0, GL_POSITION, [0.0, 0.0, 0.0, 1.0])
+        if self.fixed_spot:
+            if self.new_fixed_spot:
+                self.spot_direction = spot_direction
+                self.new_fixed_spot = False
+            spot_direction = self.spot_direction
+        d = spot_direction
+        glLighti(GL_LIGHT0, GL_SPOT_CUTOFF, spot_cutoff)
+        glLightfv(GL_LIGHT0, GL_SPOT_DIRECTION, [d.x, d.y, d.z])
+        glLightfv(GL_LIGHT0, GL_POSITION, [0.0, 0.0, 0.0, 1.0])
 
-            glMatrixMode(GL_PROJECTION)
-            glLoadIdentity()
+        glMatrixMode(GL_PROJECTION)
+        glLoadIdentity()
 
-            gluPerspective(fov, aspect, 1.0, 100000.0)
-            self.camera.update_gl()
+        gluPerspective(fov, aspect, 1.0, 100000.0)
+        self.camera.update_gl()
 
-            glMatrixMode(GL_MODELVIEW)
-            glLoadIdentity()
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
 
-            glEnableClientState(GL_VERTEX_ARRAY)
-            glVertexPointer(3, GL_FLOAT, 0, self.vertices_ptr)
+        glEnableClientState(GL_VERTEX_ARRAY)
+        glVertexPointer(3, GL_FLOAT, 0, self.vertices_ptr)
 
-            glEnableClientState(GL_NORMAL_ARRAY)
-            glNormalPointer(GL_FLOAT, 0, self.normals_ptr)
+        glEnableClientState(GL_NORMAL_ARRAY)
+        glNormalPointer(GL_FLOAT, 0, self.normals_ptr)
 
-            glEnableClientState(GL_TEXTURE_COORD_ARRAY)
-            glTexCoordPointer(2, GL_INT, 0, self.texcoords_ptr)
+        glEnableClientState(GL_TEXTURE_COORD_ARRAY)
+        glTexCoordPointer(2, GL_INT, 0, self.texcoords_ptr)
 
-            glDrawElements(GL_QUADS, self.indices_len,
-                           GL_UNSIGNED_INT, self.indices_ptr)
+        glDrawElements(GL_QUADS, self.indices_len,
+                       GL_UNSIGNED_INT, self.indices_ptr)
 
     def update(self):
-        self.camera.update()
-
         cdef tuple offset
         cdef np.ndarray[float, ndim=2] vertices = self.vertices
         cdef np.ndarray[long, ndim=1] random_cubes
@@ -445,7 +443,7 @@ cdef class World(object):
         return len(self.indices) / 4  # 4 points par face.
 
     def get_status(self):
-        return '%s polygones: %s' % (self.camera.get_status(),
+        return '%s polygones: %d' % (self.camera.get_status(),
                                      self.get_polygon_count())
 
 
@@ -477,15 +475,15 @@ class GLWidget(QtOpenGL.QGLWidget):
         self.world.update_gl()
 
     def updateDispatcher(self):
-        self.updateStatusBar()
         self.updateGL()
         self.fps_iterations += 1
 
     def updateStatusBar(self):
+        self.updateFPS()
         seconds_elapsed = (self.current_time - self.last_time).total_seconds()
         self.parent.statusBar().showMessage(
-            'fps: %s %s' % (self.frames_counted / seconds_elapsed,
-                            self.world.get_status()))
+            'fps: %.2f %s' % (self.frames_counted / seconds_elapsed,
+                              self.world.get_status()))
 
     def updateFPS(self):
         self.last_time = self.current_time
@@ -516,17 +514,17 @@ class Window(QtGui.QMainWindow):
         timer = QtCore.QTimer(self)
         QtCore.QObject.connect(timer, QtCore.SIGNAL('timeout()'),
                                self.glWidget.updateDispatcher)
-        timer.start(1000.0 / 60.0)
+        timer.start(1000 / 60)
 
         geometry_timer = QtCore.QTimer(self)
         QtCore.QObject.connect(geometry_timer, QtCore.SIGNAL('timeout()'),
                                self.glWidget.world.update)
-        geometry_timer.start(1000.0 / 60.0)
+        geometry_timer.start(1000 / 60)
 
-        fps_timer = QtCore.QTimer(self)
-        QtCore.QObject.connect(fps_timer, QtCore.SIGNAL('timeout()'),
-                               self.glWidget.updateFPS)
-        fps_timer.start(1000.0)
+        statusbar_timer = QtCore.QTimer(self)
+        QtCore.QObject.connect(statusbar_timer, QtCore.SIGNAL('timeout()'),
+                               self.glWidget.updateStatusBar)
+        statusbar_timer.start(1000)
 
     def lockMouse(self):
         self.mouse_locked = True
