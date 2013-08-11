@@ -11,7 +11,7 @@ cdef np.ndarray[double, ndim=1] distances_from_array(np.ndarray[double, ndim=2] 
     return d[:, 0] + d[:, 1]
 
 
-cpdef np.ndarray[double, ndim=2] voronoi_matrix(
+cpdef np.ndarray[double, ndim=2] voronoi_array(
         int size, int n_points=20, bint save=True):
     cdef np.ndarray points = np.random.randint(0, size, (n_points, 2))
     voronoi = Voronoi(points)

@@ -41,7 +41,7 @@ cdef inline double nearby_sum(double[:, :] m, int x, int y,
     return m[x, ym] + m[xm, y] + m[xM, y] + m[x, yM]
 
 
-cpdef np.ndarray[double, ndim=2] build_height_map(
+cpdef np.ndarray[double, ndim=2] continuous_map(
         int size, int amplitude=15, float smoothing=0.8, bint save=True):
     cdef unsigned int orig_size, step, two_steps, x, y
     cdef float random_coef

@@ -19,9 +19,10 @@ from PyQt4 import QtGui
 from PyQt4 import QtOpenGL
 from PyQt4.QtGui import (
     QPixmap, QCursor, QSlider, QGroupBox, QGridLayout, QLabel, QDockWidget)
-from diamond_square cimport build_height_map
+from diamond_square cimport continuous_map
 from utils cimport equalize_height_map, save_to_img
-from voronoi cimport voronoi_matrix
+from perturbation cimport perturbate_array
+from voronoi cimport voronoi_array
 
 
 cdef extern from 'GL/gl.h' nogil:
@@ -269,7 +270,7 @@ cdef class World(object):
 
     cdef void create_vertices(self, int n):
         cdef np.ndarray[float, ndim=2] cube_vertices, indices_xz, indices_xyz
-        cdef np.ndarray[double, ndim=2] height_map, voronoi
+        cdef np.ndarray[double, ndim=2] height_map
         cube_vertices = self.cube.vertices
         self.per_cube = len(cube_vertices)
         # Taken from http://stackoverflow.com/a/4714857/1576438
@@ -278,10 +279,10 @@ cdef class World(object):
         indices_xyz = np.zeros((n ** 2, 3), dtype=b'float32')
         indices_xyz[:, 0] = indices_xz[:, 0]
 
-        height_map = equalize_height_map(build_height_map(n), -10.0, 10.0)
-        voronoi = voronoi_matrix(n)
-        height_map += equalize_height_map(voronoi, -11.5, 11.5)
+        height_map = equalize_height_map(continuous_map(n), -20.0, 20.0)
+        height_map += equalize_height_map(voronoi_array(n), -23.0, 23.0)
         save_to_img(height_map)
+        height_map = perturbate_array(height_map)
         indices_xyz[:, 1] = height_map.flatten()
 
         indices_xyz[:, 2] = indices_xz[:, 1]

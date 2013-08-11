@@ -7,6 +7,7 @@ ext_modules = [
     Extension('utils', ['utils.pyx']),
     Extension('diamond_square', ['diamond_square.pyx']),
     Extension('voronoi', ['voronoi.pyx']),
+    Extension('perturbation', ['perturbation.pyx']),
     Extension('engine', ['engine.pyx'], libraries=['GL', 'GLU']),
 ]
 
