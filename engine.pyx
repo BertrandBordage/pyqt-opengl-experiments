@@ -96,12 +96,15 @@ cdef class TextureImage(object):
         int width, height
         bytes str
         np.ndarray array
+        char* array_ptr
 
     def __cinit__(self, filename):
         self.img = Image.open(filename)
         self.width, self.height = self.img.size
         self.str = self.img.tostring()
-        self.array = np.array(list(self.str))
+        cpdef np.ndarray[char, ndim=1] array = np.array(list(self.str))
+        self.array = array
+        self.array_ptr = &array[0]
 
 
 cdef class Cube(object):
@@ -318,7 +321,7 @@ cdef class World(object):
 
         self.indices_len = len(self.indices)
 
-    def create(self):
+    cdef void create(self):
         start = datetime.datetime.now()
         printf('Création du monde…\n')
 
@@ -348,7 +351,6 @@ cdef class World(object):
                <double>(polygon_time - start).total_seconds())
 
     def initialize_gl(self):
-        cdef np.ndarray[char, ndim=1] texture_array = self.texture.array
         with nogil:
             glEnable(GL_COLOR_MATERIAL)
             glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
@@ -367,7 +369,7 @@ cdef class World(object):
             glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
             glTexImage2D(GL_TEXTURE_2D,
                          0, GL_RGB, self.texture.width, self.texture.height,
-                         0, GL_RGB, GL_UNSIGNED_BYTE, &texture_array[0])
+                         0, GL_RGB, GL_UNSIGNED_BYTE, self.texture.array_ptr)
 
         self.create()
 
