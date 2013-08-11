@@ -12,7 +12,6 @@ import datetime
 
 import numpy as np
 cimport numpy as np
-from OpenGL import GLU
 from PIL import Image
 from PyQt4 import QtCore
 from PyQt4.QtCore import Qt
@@ -23,11 +22,7 @@ from PyQt4.QtGui import (
 from diamond_square cimport build_height_map
 
 
-from OpenGL.arrays import numpymodule
-numpymodule.NumpyHandler.ERROR_ON_COPY = True
-
-
-cdef extern from "GL/gl.h" nogil:
+cdef extern from 'GL/gl.h' nogil:
     ctypedef unsigned int GLenum
     ctypedef unsigned int GLbitfield
     ctypedef void         GLvoid
@@ -91,6 +86,9 @@ cdef extern from "GL/gl.h" nogil:
     void glDrawElements(GLenum mode, GLsizei count, GLenum type,
                         GLvoid *indices)
 
+cdef extern from 'GL/glu.h' nogil:
+    void gluPerspective(GLdouble fovy, GLdouble aspect,
+                        GLdouble zNear, GLdouble zFar)
 
 cdef class TextureImage(object):
     cdef img
@@ -350,75 +348,78 @@ cdef class World(object):
                <double>(polygon_time - start).total_seconds())
 
     def initialize_gl(self):
-        glEnable(GL_COLOR_MATERIAL)
-        glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
-
-        cdef float* mat_specular = [0.5, 0.5, 0.5, 0.5]
-        glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, &mat_specular[0])
-        glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 100.0)
-
-        glEnable(GL_LIGHTING)
-        glEnable(GL_LIGHT0)
-        glEnable(GL_DEPTH_TEST)
-        glLightf(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, 0.00005)
-        glLightfv(GL_LIGHT0, GL_DIFFUSE, [0.7, 0.7, 0.7, 0.7])
-
-        glEnable(GL_TEXTURE_2D)
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
-        glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
         cdef np.ndarray[char, ndim=1] texture_array = self.texture.array
-        glTexImage2D(GL_TEXTURE_2D,
-                     0, GL_RGB, self.texture.width, self.texture.height,
-                     0, GL_RGB, GL_UNSIGNED_BYTE, &texture_array[0])
+        with nogil:
+            glEnable(GL_COLOR_MATERIAL)
+            glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
+
+            glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, [0.5, 0.5, 0.5, 0.5])
+            glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 100.0)
+
+            glEnable(GL_LIGHTING)
+            glEnable(GL_LIGHT0)
+            glEnable(GL_DEPTH_TEST)
+            glLightf(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, 0.00005)
+            glLightfv(GL_LIGHT0, GL_DIFFUSE, [0.7, 0.7, 0.7, 0.7])
+
+            glEnable(GL_TEXTURE_2D)
+            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
+            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST)
+            glTexImage2D(GL_TEXTURE_2D,
+                         0, GL_RGB, self.texture.width, self.texture.height,
+                         0, GL_RGB, GL_UNSIGNED_BYTE, &texture_array[0])
 
         self.create()
 
     def update_gl(self):
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
-
-        cdef Coords spot_position = self.camera.get_spot_position()
-        if self.fixed_spot:
-            if self.new_fixed_spot:
-                self.spot_position = spot_position
-            spot_position = self.spot_position
         cdef int spot_cutoff = self.parent.parent.spot_slider.value()
-        glLighti(GL_LIGHT0, GL_SPOT_CUTOFF, spot_cutoff)
-        p = spot_position
-        glTranslatef(p.x, p.y, p.z)
+        cdef Coords spot_position = self.camera.get_spot_position(), \
+                    spot_direction = self.camera.get_spot_direction(), \
+                    d
+        cdef float aspect = (self.parent.parent.width
+                             / self.parent.parent.height), \
+                   fov = self.parent.parent.fov_slider.value()
 
-        cdef Coords spot_direction = self.camera.get_spot_direction()
-        if self.fixed_spot:
-            if self.new_fixed_spot:
-                self.spot_direction = spot_direction
-                self.new_fixed_spot = False
-            spot_direction = self.spot_direction
+        with nogil:
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
-        cdef Coords d = spot_direction
-        glLightfv(GL_LIGHT0, GL_SPOT_DIRECTION, [d.x, d.y, d.z])
-        glLightfv(GL_LIGHT0, GL_POSITION, [0.0, 0.0, 0.0, 1.0])
+            if self.fixed_spot:
+                if self.new_fixed_spot:
+                    self.spot_position = spot_position
+                spot_position = self.spot_position
+            p = spot_position
+            glTranslatef(p.x, p.y, p.z)
 
-        glMatrixMode(GL_PROJECTION)
-        glLoadIdentity()
-        aspect = self.parent.parent.width / self.parent.parent.height
+            if self.fixed_spot:
+                if self.new_fixed_spot:
+                    self.spot_direction = spot_direction
+                    self.new_fixed_spot = False
+                spot_direction = self.spot_direction
+            d = spot_direction
+            glLighti(GL_LIGHT0, GL_SPOT_CUTOFF, spot_cutoff)
+            glLightfv(GL_LIGHT0, GL_SPOT_DIRECTION, [d.x, d.y, d.z])
+            glLightfv(GL_LIGHT0, GL_POSITION, [0.0, 0.0, 0.0, 1.0])
 
-        GLU.gluPerspective(
-            self.parent.parent.fov_slider.value(), aspect, 1.0, 100000.0)
-        self.camera.update_gl()        
+            glMatrixMode(GL_PROJECTION)
+            glLoadIdentity()
 
-        glMatrixMode(GL_MODELVIEW)
-        glLoadIdentity()
+            gluPerspective(fov, aspect, 1.0, 100000.0)
+            self.camera.update_gl()
 
-        glEnableClientState(GL_VERTEX_ARRAY)
-        glVertexPointer(3, GL_FLOAT, 0, self.vertices_ptr)
+            glMatrixMode(GL_MODELVIEW)
+            glLoadIdentity()
 
-        glEnableClientState(GL_NORMAL_ARRAY)
-        glNormalPointer(GL_FLOAT, 0, self.normals_ptr)
+            glEnableClientState(GL_VERTEX_ARRAY)
+            glVertexPointer(3, GL_FLOAT, 0, self.vertices_ptr)
 
-        glEnableClientState(GL_TEXTURE_COORD_ARRAY)
-        glTexCoordPointer(2, GL_INT, 0, self.texcoords_ptr)
+            glEnableClientState(GL_NORMAL_ARRAY)
+            glNormalPointer(GL_FLOAT, 0, self.normals_ptr)
 
-        glDrawElements(GL_QUADS, self.indices_len,
-                       GL_UNSIGNED_INT, self.indices_ptr)
+            glEnableClientState(GL_TEXTURE_COORD_ARRAY)
+            glTexCoordPointer(2, GL_INT, 0, self.texcoords_ptr)
+
+            glDrawElements(GL_QUADS, self.indices_len,
+                           GL_UNSIGNED_INT, self.indices_ptr)
 
     def update(self):
         self.camera.update()

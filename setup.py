@@ -6,7 +6,7 @@ from Cython.Distutils import build_ext
 ext_modules = [
     Extension('utils', ['utils.pyx']),
     Extension('diamond_square', ['diamond_square.pyx']),
-    Extension('engine', ['engine.pyx'], libraries=['GL']),
+    Extension('engine', ['engine.pyx'], libraries=['GL', 'GLU']),
 ]
 
 
