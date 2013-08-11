@@ -74,7 +74,7 @@ cpdef np.ndarray[double, ndim=2] build_height_map(
         for x from step <= x < size by two_steps:
             for y from step <= y < size by two_steps:
                 m_view[x, y] = (nearby_sum(m_view, x, y, step, size, DIAMOND)
-                           + uniform(-random_coef, random_coef)) / 4
+                                + uniform(-random_coef, random_coef)) / 4
 
         # Square
         for x from 0 <= x < size by step:
