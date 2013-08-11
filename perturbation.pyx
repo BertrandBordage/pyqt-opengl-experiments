@@ -7,7 +7,7 @@ from utils cimport equalize_height_map, save_to_img
 cpdef np.ndarray[double, ndim=2] perturbate_array(
         np.ndarray[double, ndim=2] height_map, bint save=True):
     cdef int size = height_map.shape[0]
-    DEF magnitude = 0.25
+    DEF magnitude = 0.15
     cdef np.ndarray[double, ndim=2] angles, distances, new_height_map
     angles = equalize_height_map(continuous_map(size), -M_PI, M_PI)
     distances = equalize_height_map(continuous_map(size), 0.0, size * magnitude)

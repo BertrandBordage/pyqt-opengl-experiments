@@ -280,7 +280,7 @@ cdef class World(object):
         indices_xyz[:, 0] = indices_xz[:, 0]
 
         height_map = equalize_height_map(continuous_map(n), -20.0, 20.0)
-        height_map += equalize_height_map(voronoi_array(n), -23.0, 23.0)
+        height_map += equalize_height_map(voronoi_array(n), -17.0, 17.0)
         save_to_img(height_map)
         height_map = perturbate_array(height_map)
         indices_xyz[:, 1] = height_map.flatten()

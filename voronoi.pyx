@@ -12,10 +12,14 @@ cdef np.ndarray[double, ndim=1] distances_from_array(np.ndarray[double, ndim=2] 
 
 
 cpdef np.ndarray[double, ndim=2] voronoi_array(
-        int size, int n_points=20, bint save=True):
+        int size, int n_points=15, bint save=True):
     cdef np.ndarray points = np.random.randint(0, size, (n_points, 2))
     voronoi = Voronoi(points)
-    cdef np.ndarray[double, ndim=2] vertices = voronoi.vertices
+    cdef np.ndarray[double, ndim=2] vertices = np.concatenate(
+        [voronoi.vertices,
+         voronoi.vertices - [size, 0], voronoi.vertices + [size, 0],
+         voronoi.vertices - [0, size], voronoi.vertices + [0, size],
+         voronoi.vertices - [size, size], voronoi.vertices + [size, size]])
 
     cdef np.ndarray[double, ndim=2] m = np.zeros((size, size), dtype=b'double')
     cdef np.ndarray[double, ndim=1] distances
