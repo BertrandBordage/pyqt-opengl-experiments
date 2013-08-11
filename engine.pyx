@@ -13,7 +13,6 @@ import datetime
 import numpy as np
 cimport numpy as np
 from OpenGL import GLU
-from OpenGL.GL import glLightfv, glLightiv, glTranslatef
 from PIL import Image
 from PyQt4 import QtCore
 from PyQt4.QtCore import Qt
@@ -70,8 +69,8 @@ cdef extern from "GL/gl.h" nogil:
     void glClear(GLbitfield mask)
     void glEnable(GLenum cap)
     void glLightf(GLenum light, GLenum pname, GLfloat param)
-    # void glLightfv(GLenum light, GLenum pname, GLfloat *params)
-    # void glLightiv(GLenum light, GLenum pname, GLint *params)
+    void glLightfv(GLenum light, GLenum pname, GLfloat *params)
+    void glLighti(GLenum light, GLenum pname, GLint param)
     void glColorMaterial(GLenum face, GLenum mode)
     void glMaterialf(GLenum face, GLenum pname, GLfloat param)
     void glMaterialfv(GLenum face, GLenum pname, GLfloat *params)
@@ -83,7 +82,7 @@ cdef extern from "GL/gl.h" nogil:
     void glViewport(GLint x, GLint y, GLsizei width, GLsizei height)
     void glLoadIdentity()
     void glRotatef(GLfloat angle, GLfloat x, GLfloat y, GLfloat z)
-    # void glTranslatef(GLfloat x, GLfloat y, GLfloat z)
+    void glTranslatef(GLfloat x, GLfloat y, GLfloat z)
     void glEnableClientState(GLenum cap)
     void glVertexPointer(GLint size, GLenum type, GLsizei stride, GLvoid *ptr)
     void glNormalPointer(GLenum type, GLsizei stride, GLvoid *ptr)
@@ -175,6 +174,16 @@ cdef inline float limit_float(float f, float m, float M) nogil:
     return m if f < m else M if f > M else f
 
 
+cdef struct Coords:
+    float x, y, z
+
+
+cdef inline Coords coords(float x, float y, float z) nogil:
+    cdef Coords c = Coords()
+    c.x = x; c.y = y; c.z = z
+    return c
+
+
 cdef class Camera(object):
     cdef public float x, y, z, dx, dy, dz, adx, ady
 
@@ -188,12 +197,8 @@ cdef class Camera(object):
         self.adx = 0.0  # degrés
         self.ady = 0.0  # degrés
 
-    property position:
-        def __get__(self):
-            return self.x, -self.y, self.z
-
-        def __set__(self, value):
-            self.x, self.y, self.z = value
+    cdef Coords position(self) nogil:
+        return coords(self.x, -self.y, self.z)
 
     cdef inline float arx(self) nogil:
         """
@@ -207,24 +212,21 @@ cdef class Camera(object):
         """
         return self.ady * M_PI / 180.0
 
-    cdef get_spot_position(self):
-        return [-self.x, self.y, -self.z]
+    cdef inline Coords get_spot_position(self) nogil:
+        return coords(-self.x, self.y, -self.z)
 
-    cdef get_spot_direction(self):
+    cdef inline Coords get_spot_direction(self) nogil:
         cdef float arx = self.arx()
         cdef float ary = self.ary()
-        return [
-            -sin(ary) * cos(arx),
-            sin(arx),
-            -cos(ary) * cos(arx),
-        ]
+        return coords(-sin(ary) * cos(arx), sin(arx), -cos(ary) * cos(arx))
 
-    cdef void update_gl(self):
+    cdef void update_gl(self) nogil:
         glRotatef(self.adx, -1.0, 0.0, 0.0)
         glRotatef(self.ady, 0.0, -1.0, 0.0)
-        glTranslatef(*self.position)
+        cdef Coords p = self.position()
+        glTranslatef(p.x, p.y, p.z)
 
-    cdef void update(self):
+    cdef void update(self) nogil:
         self.adx = limit_float(self.adx, -90.0, 90.0)
         self.ady %= 360.0
         cdef float a = self.ary()
@@ -251,20 +253,19 @@ cdef class World(object):
     cdef int indices_len
     
     cdef public Camera camera
-    cdef spot_position, spot_direction
-    cdef bint fixed_spot
-    cdef action
-    cdef float action_step
+    cdef Coords spot_position, spot_direction
+    cdef bint fixed_spot, new_fixed_spot
+    cdef public action
+    cdef public float action_step
 
     def __cinit__(self, parent):
         self.parent = parent
         self.cube = Cube()
         self.texture = TextureImage('texture.png')
 
-        self.camera = Camera()        
-        self.spot_position = None
-        self.spot_direction = None
+        self.camera = Camera()
         self.fixed_spot = False
+        self.new_fixed_spot = True
 
         self.action = None
         self.action_step = 1.0        
@@ -375,22 +376,25 @@ cdef class World(object):
     def update_gl(self):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
-        spot_direction = self.camera.get_spot_direction()
-
+        cdef Coords spot_position = self.camera.get_spot_position()
         if self.fixed_spot:
-            if self.spot_direction is None:
-                self.spot_direction = spot_direction
-            spot_direction = self.spot_direction
-
-        spot_position = self.camera.get_spot_position()
-        if self.fixed_spot:
-            if self.spot_position is None:
+            if self.new_fixed_spot:
                 self.spot_position = spot_position
             spot_position = self.spot_position
-        glLightiv(GL_LIGHT0, GL_SPOT_CUTOFF, self.parent.parent.spot_slider.value())
-        glTranslatef(*spot_position)
+        cdef int spot_cutoff = self.parent.parent.spot_slider.value()
+        glLighti(GL_LIGHT0, GL_SPOT_CUTOFF, spot_cutoff)
+        p = spot_position
+        glTranslatef(p.x, p.y, p.z)
 
-        glLightfv(GL_LIGHT0, GL_SPOT_DIRECTION, spot_direction)
+        cdef Coords spot_direction = self.camera.get_spot_direction()
+        if self.fixed_spot:
+            if self.new_fixed_spot:
+                self.spot_direction = spot_direction
+                self.new_fixed_spot = False
+            spot_direction = self.spot_direction
+
+        cdef Coords d = spot_direction
+        glLightfv(GL_LIGHT0, GL_SPOT_DIRECTION, [d.x, d.y, d.z])
         glLightfv(GL_LIGHT0, GL_POSITION, [0.0, 0.0, 0.0, 1.0])
 
         glMatrixMode(GL_PROJECTION)
@@ -434,7 +438,7 @@ cdef class World(object):
                 i = random_cubes[n]
                 vertices[i:i + per_cube] += offset
 
-    def get_polygon_count(self):
+    cdef int get_polygon_count(self):
         return len(self.indices) / 4  # 4 points par face.
 
     def get_status(self):
@@ -682,12 +686,11 @@ class Window(QtGui.QMainWindow):
         if button == Qt.MiddleButton:
             self.glWidget.fixed_spot = not self.glWidget.fixed_spot
             if not self.glWidget.fixed_spot:
-                self.glWidget.spot_position = None
-                self.glWidget.spot_direction = None
-        self.glWidget.action = action or None
+                self.glWidget.world.new_fixed_spot = True
+        self.glWidget.world.action = action or None
 
     def mouseReleaseEvent(self, QMouseEvent):
-        self.glWidget.action = None
+        self.glWidget.world.action = None
 
     def close(self):
         QtGui.qApp.quit()
