@@ -1,15 +1,16 @@
-from matplotlib import pyplot
+# coding: utf-8
+
 import numpy as np
-from scipy.spatial import Voronoi, voronoi_plot_2d
+from scipy.spatial import Voronoi
 from utils import save_to_img
 
 
 def distances_from_array(array, value):
     d = array - value
-    return np.sqrt(d[:, 0] ** 2 + d[:, 1] ** 2)
+    return d[:, 0] ** 2 + d[:, 1] ** 2
 
 
-def voronoi_matrix(size, n_points=15, coefs=(-1, 1), save=True, plot=False):
+def voronoi_matrix(size, n_points=20, coefs=(-1, 1), save=True):
     points = np.random.randint(0, size, (n_points, 2))
     voronoi = Voronoi(points)
 
@@ -22,9 +23,7 @@ def voronoi_matrix(size, n_points=15, coefs=(-1, 1), save=True, plot=False):
                           for i, coef in enumerate(coefs) if coef)
 
     if save:
-        save_to_img(m.copy())
-    if plot:
-        voronoi_plot_2d(voronoi)
-        pyplot.show()
+        save_to_img(m)
 
+    # We should return np.sqrt(m) but to optimize, we skip this step.
     return m

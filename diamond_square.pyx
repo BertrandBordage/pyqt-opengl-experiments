@@ -5,6 +5,7 @@
 # cython: c_string_type=bytes
 
 from __future__ import unicode_literals, division
+from libc.math cimport pow
 import numpy as np
 cimport numpy as np
 from utils cimport uniform, save_to_img
@@ -39,8 +40,9 @@ cdef inline double nearby_sum(double[:, :] m, int x, int y,
         return m[xm, ym] + m[xM, ym] + m[xm, yM] + m[xM, yM]
     return m[x, ym] + m[xm, y] + m[xM, y] + m[x, yM]
 
+
 cpdef np.ndarray[double, ndim=2] build_height_map(
-        int size, int amplitude=15, int smoothing=10, bint save=False):
+        int size, int amplitude=15, float smoothing=0.8, bint save=True):
     cdef unsigned int orig_size, step, two_steps, x, y
     cdef float random_coef
     orig_size = size
@@ -51,7 +53,7 @@ cpdef np.ndarray[double, ndim=2] build_height_map(
 
     step = size // 2
     while True:
-        random_coef = <float>step / <float>smoothing
+        random_coef = pow(<float>step, <float>smoothing)
         two_steps = step * 2
 
         # Diamond
@@ -75,6 +77,6 @@ cpdef np.ndarray[double, ndim=2] build_height_map(
     m = m[:orig_size, :orig_size] * amplitude
 
     if save:
-        save_to_img(m.copy())
+        save_to_img(m)
 
     return m

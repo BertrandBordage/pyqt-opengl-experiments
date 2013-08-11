@@ -20,6 +20,8 @@ from PyQt4 import QtOpenGL
 from PyQt4.QtGui import (
     QPixmap, QCursor, QSlider, QGroupBox, QGridLayout, QLabel, QDockWidget)
 from diamond_square cimport build_height_map
+from utils cimport equalize_height_map, save_to_img
+from voronoi import voronoi_matrix
 
 
 cdef extern from 'GL/gl.h' nogil:
@@ -267,6 +269,7 @@ cdef class World(object):
 
     cdef void create_vertices(self, int n):
         cdef np.ndarray[float, ndim=2] cube_vertices, indices_xz, indices_xyz
+        cdef np.ndarray[double, ndim=2] height_map, voronoi
         cube_vertices = self.cube.vertices
         self.per_cube = len(cube_vertices)
         # Taken from http://stackoverflow.com/a/4714857/1576438
@@ -274,7 +277,13 @@ cdef class World(object):
             np.rollaxis(np.indices((n,) * 2), 0, 2 + 1).reshape(-1, 2)]
         indices_xyz = np.zeros((n ** 2, 3), dtype=b'float32')
         indices_xyz[:, 0] = indices_xz[:, 0]
-        indices_xyz[:, 1] = (build_height_map(n).flatten())
+
+        height_map = equalize_height_map(build_height_map(n), -10.0, 10.0)
+        voronoi = voronoi_matrix(n)
+        height_map += equalize_height_map(voronoi, -11.5, 11.5)
+        save_to_img(height_map)
+        indices_xyz[:, 1] = height_map.flatten()
+
         indices_xyz[:, 2] = indices_xz[:, 1]
         cdef np.ndarray[float, ndim=2] vertices = (
             cube_vertices + indices_xyz.reshape(-1, 1, 3)
