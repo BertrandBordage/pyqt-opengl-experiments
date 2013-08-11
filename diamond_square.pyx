@@ -38,19 +38,22 @@ cdef inline int _get_real_max(int maxi, int size) nogil:
     return maxi
 
 
-cdef struct NearbyCoordinates:
-    int xm, xM, ym, yM
+cdef enum SIDE:
+    DIAMOND = 1
+    SQUARE = 2
 
 
-cdef inline NearbyCoordinates get_nearby_coords(int x, int y,
-                                                 int step, int size) nogil:
-    cdef NearbyCoordinates out
-    out.xm = _get_real_min(x - step, size)
-    out.xM = _get_real_max(x + step, size)
-    out.ym = _get_real_min(y - step, size)
-    out.yM = _get_real_max(y + step, size)
-    return out
+cdef inline double nearby_sum(double[:, :] m, int x, int y,
+                              int step, int size, SIDE side) nogil:
+    cdef int xm, xM, ym, yM
+    xm = _get_real_min(x - step, size)
+    xM = _get_real_max(x + step, size)
+    ym = _get_real_min(y - step, size)
+    yM = _get_real_max(y + step, size)
 
+    if side == DIAMOND:
+        return m[xm, ym] + m[xM, ym] + m[xm, yM] + m[xM, yM]
+    return m[x, ym] + m[xm, y] + m[xM, y] + m[x, yM]
 
 cpdef np.ndarray[double, ndim=2] build_height_map(
         int size, int amplitude=15, int smoothing=10, bint save=False):
@@ -60,6 +63,7 @@ cpdef np.ndarray[double, ndim=2] build_height_map(
     size += (size + 1) % 2
 
     cdef np.ndarray[double, ndim=2] m = np.zeros((size, size))
+    cdef double[:, :] m_view = m
 
     step = size // 2
     while True:
@@ -69,9 +73,7 @@ cpdef np.ndarray[double, ndim=2] build_height_map(
         # Diamond
         for x from step <= x < size by two_steps:
             for y from step <= y < size by two_steps:
-                c = get_nearby_coords(x, y, step, size)
-                m[x, y] = (m[c.xm, c.ym] + m[c.xM, c.ym]
-                           + m[c.xm, c.yM] + m[c.xM, c.yM]
+                m_view[x, y] = (nearby_sum(m_view, x, y, step, size, DIAMOND)
                            + uniform(-random_coef, random_coef)) / 4
 
         # Square
@@ -80,9 +82,7 @@ cpdef np.ndarray[double, ndim=2] build_height_map(
                 if m[x, y]:
                     continue
 
-                c = get_nearby_coords(x, y, step, size)
-                m[x, y] = (m[x, c.ym] + m[c.xm, y]
-                           + m[c.xM, y] + m[x, c.yM]) / 4
+                m_view[x, y] = nearby_sum(m_view, x, y, step, size, SQUARE) / 4
 
         if step == 1:
             break
