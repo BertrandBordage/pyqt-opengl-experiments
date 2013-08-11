@@ -1,1 +1,8 @@
-cdef inline float uniform(float a, float b) nogil
+ctypedef fused real:
+    short
+    int
+    long
+    float
+    double
+
+cdef inline real uniform(real a, real b) nogil

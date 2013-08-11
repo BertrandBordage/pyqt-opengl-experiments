@@ -38,9 +38,23 @@ cdef inline int _get_real_max(int maxi, int size) nogil:
     return maxi
 
 
+cdef struct NearbyCoordinates:
+    int xm, xM, ym, yM
+
+
+cdef inline NearbyCoordinates get_nearby_coords(int x, int y,
+                                                 int step, int size) nogil:
+    cdef NearbyCoordinates out
+    out.xm = _get_real_min(x - step, size)
+    out.xM = _get_real_max(x + step, size)
+    out.ym = _get_real_min(y - step, size)
+    out.yM = _get_real_max(y + step, size)
+    return out
+
+
 cpdef np.ndarray[double, ndim=2] build_height_map(
         int size, int amplitude=15, int smoothing=10, bint save=False):
-    cdef int orig_size, step, x, y, xmin, xmax, ymin, ymax
+    cdef unsigned int orig_size, step, two_steps, x, y
     cdef float random_coef
     orig_size = size
     size += (size + 1) % 2
@@ -49,17 +63,15 @@ cpdef np.ndarray[double, ndim=2] build_height_map(
 
     step = size // 2
     while True:
-        random_coef = <double>step / <double>smoothing
+        random_coef = <float>step / <float>smoothing
+        two_steps = step * 2
 
         # Diamond
-        for x from step <= x < size by step * 2:
-            for y from step <= y < size by step * 2:
-                xmin = _get_real_min(x - step, size)
-                ymin = _get_real_min(y - step, size)
-                xmax = _get_real_max(x + step, size)
-                ymax = _get_real_max(y + step, size)
-                m[x, y] = (m[xmin, ymin] + m[xmax, ymin]
-                           + m[xmin, ymax] + m[xmax, ymax]
+        for x from step <= x < size by two_steps:
+            for y from step <= y < size by two_steps:
+                c = get_nearby_coords(x, y, step, size)
+                m[x, y] = (m[c.xm, c.ym] + m[c.xM, c.ym]
+                           + m[c.xm, c.yM] + m[c.xM, c.yM]
                            + uniform(-random_coef, random_coef)) / 4
 
         # Square
@@ -68,12 +80,9 @@ cpdef np.ndarray[double, ndim=2] build_height_map(
                 if m[x, y]:
                     continue
 
-                xmin = _get_real_min(x - step, size)
-                ymin = _get_real_min(y - step, size)
-                xmax = _get_real_max(x + step, size)
-                ymax = _get_real_max(y + step, size)
-                m[x, y] = (m[x, ymin] + m[xmin, y]
-                           + m[xmax, y] + m[x, ymax]) / 4
+                c = get_nearby_coords(x, y, step, size)
+                m[x, y] = (m[x, c.ym] + m[c.xm, y]
+                           + m[c.xM, y] + m[x, c.yM]) / 4
 
         if step == 1:
             break

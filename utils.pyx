@@ -5,7 +5,8 @@
 
 
 from libc.stdlib cimport rand, RAND_MAX
+cimport cython
 
 
-cdef inline float uniform(float a, float b) nogil:
+cdef inline real uniform(real a, real b) nogil:
     return a + (b - a) * rand() / RAND_MAX
