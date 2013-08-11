@@ -7,23 +7,7 @@
 from __future__ import unicode_literals, division
 import numpy as np
 cimport numpy as np
-from PIL import Image
-from utils cimport uniform
-
-
-i = 0
-
-
-cdef inline void save_to_img(np.ndarray m):
-    global i
-    cdef float mini = m.min()
-    if mini < 0:
-        m += - mini
-    m *= 255 / m.max()
-
-    img = Image.fromarray(m.astype(b'uint8'))
-    img.save('diamond_square/map%s.png' % i)
-    i += 1
+from utils cimport uniform, save_to_img
 
 
 cdef inline int _get_real_min(int mini, int size) nogil:
