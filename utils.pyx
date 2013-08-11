@@ -30,5 +30,5 @@ cpdef inline save_to_img(np.ndarray m):
     m = equalize_height_map(m, 0.0, 255.0)
 
     img = Image.fromarray(m.astype(b'uint8'))
-    img.save('diamond_square/map%s.png' % i)
+    img.save('maps/map%s.png' % i)
     i += 1
