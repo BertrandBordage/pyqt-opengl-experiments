@@ -179,12 +179,6 @@ cdef struct Coords:
     float x, y, z
 
 
-cdef inline Coords coords(float x, float y, float z) nogil:
-    cdef Coords c = Coords()
-    c.x = x; c.y = y; c.z = z
-    return c
-
-
 cdef class Camera(object):
     cdef public float x, y, z, dx, dy, dz, adx, ady
 
@@ -199,7 +193,7 @@ cdef class Camera(object):
         self.ady = 0.0  # degrés
 
     cdef Coords position(self) nogil:
-        return coords(self.x, -self.y, self.z)
+        return [self.x, -self.y, self.z]
 
     cdef inline float arx(self) nogil:
         """
@@ -214,17 +208,17 @@ cdef class Camera(object):
         return self.ady * M_PI / 180.0
 
     cdef inline Coords get_spot_position(self) nogil:
-        return coords(-self.x, self.y, -self.z)
+        return [-self.x, self.y, -self.z]
 
     cdef inline Coords get_spot_direction(self) nogil:
         cdef float arx = self.arx()
         cdef float ary = self.ary()
-        return coords(-sin(ary) * cos(arx), sin(arx), -cos(ary) * cos(arx))
+        return [-sin(ary) * cos(arx), sin(arx), -cos(ary) * cos(arx)]
 
     cdef void update_gl(self) nogil:
         glRotatef(self.adx, -1.0, 0.0, 0.0)
         glRotatef(self.ady, 0.0, -1.0, 0.0)
-        cdef Coords p = self.position()
+        p = self.position()
         glTranslatef(p.x, p.y, p.z)
 
     cdef void update(self) nogil:
@@ -376,15 +370,13 @@ cdef class World(object):
         self.camera.update()
 
         cdef int spot_cutoff = self.parent.parent.spot_slider.value()
-        cdef Coords spot_position = self.camera.get_spot_position(), \
-                    spot_direction = self.camera.get_spot_direction(), \
-                    d
         cdef float aspect = (self.parent.parent.width
                              / self.parent.parent.height), \
                    fov = self.parent.parent.fov_slider.value()
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
+        spot_position = self.camera.get_spot_position()
         if self.fixed_spot:
             if self.new_fixed_spot:
                 self.spot_position = spot_position
@@ -392,6 +384,7 @@ cdef class World(object):
         p = spot_position
         glTranslatef(p.x, p.y, p.z)
 
+        spot_direction = self.camera.get_spot_direction()
         if self.fixed_spot:
             if self.new_fixed_spot:
                 self.spot_direction = spot_direction
