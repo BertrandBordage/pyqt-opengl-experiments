@@ -13,7 +13,7 @@ import datetime
 import numpy as np
 cimport numpy as np
 from OpenGL import GLU
-from OpenGL.GL import glLightfv, glLightiv, glMaterialfv, glTranslatef
+from OpenGL.GL import glLightfv, glLightiv, glTranslatef
 from PIL import Image
 from PyQt4 import QtCore
 from PyQt4.QtCore import Qt
@@ -74,7 +74,7 @@ cdef extern from "GL/gl.h" nogil:
     # void glLightiv(GLenum light, GLenum pname, GLint *params)
     void glColorMaterial(GLenum face, GLenum mode)
     void glMaterialf(GLenum face, GLenum pname, GLfloat param)
-    # void glMaterialfv(GLenum face, GLenum pname, GLfloat *params)
+    void glMaterialfv(GLenum face, GLenum pname, GLfloat *params)
     void glTexParameterf(GLenum target, GLenum pname, GLfloat param)
     void glTexImage2D(GLenum target, GLint level, GLint internalFormat,
                       GLsizei width, GLsizei height, GLint border,
@@ -389,15 +389,15 @@ class GLWidget(QtOpenGL.QGLWidget):
         glEnable(GL_COLOR_MATERIAL)
         glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
 
-        mat_specular = (0.5,) * 4
-        glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, mat_specular)
+        cdef float* mat_specular = [0.5, 0.5, 0.5, 0.5]
+        glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, &mat_specular[0])
         glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 100.0)
 
         glEnable(GL_LIGHTING)
         glEnable(GL_LIGHT0)
         glEnable(GL_DEPTH_TEST)
         glLightf(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, 0.00005)
-        glLightfv(GL_LIGHT0, GL_DIFFUSE, (0.7,) * 4)
+        glLightfv(GL_LIGHT0, GL_DIFFUSE, [0.7, 0.7, 0.7, 0.7])
 
         glEnable(GL_TEXTURE_2D)
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
@@ -439,7 +439,7 @@ class GLWidget(QtOpenGL.QGLWidget):
         glTranslatef(*spot_position)
 
         glLightfv(GL_LIGHT0, GL_SPOT_DIRECTION, spot_direction)
-        glLightfv(GL_LIGHT0, GL_POSITION, (0.0, 0.0, 0.0, 1.0))
+        glLightfv(GL_LIGHT0, GL_POSITION, [0.0, 0.0, 0.0, 1.0])
 
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
