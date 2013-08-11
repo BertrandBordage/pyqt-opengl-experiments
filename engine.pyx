@@ -207,24 +207,24 @@ cdef class Camera(object):
         """
         return self.ady * M_PI / 180.0
 
-    def get_spot_position(self):
-        return -self.x, self.y, -self.z
+    cdef get_spot_position(self):
+        return [-self.x, self.y, -self.z]
 
-    def get_spot_direction(self):
+    cdef get_spot_direction(self):
         cdef float arx = self.arx()
         cdef float ary = self.ary()
-        return (
+        return [
             -sin(ary) * cos(arx),
             sin(arx),
             -cos(ary) * cos(arx),
-        )
+        ]
 
-    def update_gl(self):
+    cdef void update_gl(self):
         glRotatef(self.adx, -1.0, 0.0, 0.0)
         glRotatef(self.ady, 0.0, -1.0, 0.0)
         glTranslatef(*self.position)
 
-    def update(self):
+    cdef void update(self):
         self.adx = limit_float(self.adx, -90.0, 90.0)
         self.ady %= 360.0
         cdef float a = self.ary()
@@ -233,14 +233,15 @@ cdef class Camera(object):
         self.y += self.dy
         self.z += self.dz * cos(a) + self.dx * cos(a_side)
 
-    def get_status(self):
+    cdef unicode get_status(self):
         return 'x: %s  y: %s  z: %s  rotx: %s  roty: %s' % (
             self.x, self.y, self.z, self.adx, self.ady)
 
 
 cdef class World(object):
-    cdef parent
+    cdef public parent
     cdef Cube cube
+    cdef TextureImage texture
     cdef readonly int per_cube
     cdef np.ndarray vertices, normals, texcoords, indices
     cdef float* vertices_ptr
@@ -248,10 +249,25 @@ cdef class World(object):
     cdef int* texcoords_ptr
     cdef unsigned int* indices_ptr
     cdef int indices_len
+    
+    cdef public Camera camera
+    cdef spot_position, spot_direction
+    cdef bint fixed_spot
+    cdef action
+    cdef float action_step
 
     def __cinit__(self, parent):
         self.parent = parent
         self.cube = Cube()
+        self.texture = TextureImage('texture.png')
+
+        self.camera = Camera()        
+        self.spot_position = None
+        self.spot_direction = None
+        self.fixed_spot = False
+
+        self.action = None
+        self.action_step = 1.0        
 
     cdef void create_vertices(self, int n):
         cdef np.ndarray[float, ndim=2] cube_vertices, indices_xz, indices_xyz
@@ -332,60 +348,7 @@ cdef class World(object):
         printf('Temps total de chargement : %f secondes.\n',
                <double>(polygon_time - start).total_seconds())
 
-    def update_gl(self):
-        glMatrixMode(GL_MODELVIEW)
-        glLoadIdentity()
-
-        glEnableClientState(GL_VERTEX_ARRAY)
-        glVertexPointer(3, GL_FLOAT, 0, self.vertices_ptr)
-
-        glEnableClientState(GL_NORMAL_ARRAY)
-        glNormalPointer(GL_FLOAT, 0, self.normals_ptr)
-
-        glEnableClientState(GL_TEXTURE_COORD_ARRAY)
-        glTexCoordPointer(2, GL_INT, 0, self.texcoords_ptr)
-
-        glDrawElements(GL_QUADS, self.indices_len,
-                       GL_UNSIGNED_INT, self.indices_ptr)
-
-    def update(self):
-        cdef tuple offset
-        cdef np.ndarray[float, ndim=2] vertices = self.vertices
-        cdef np.ndarray[long, ndim=1] random_cubes
-        cdef int n
-        cdef long i, per_cube = self.per_cube
-        DEF moved_cubes = 500
-
-        if self.parent.action is not None:
-            offset = (0.0, self.parent.action, 0.0)
-            random_cubes = np.random.randint(
-                len(vertices) / per_cube, size=moved_cubes) * per_cube
-            for n in range(moved_cubes):
-                i = random_cubes[n]
-                vertices[i:i + per_cube] += offset
-
-    def get_polygon_count(self):
-        return len(self.indices) / 4  # 4 points par face.
-
-
-class GLWidget(QtOpenGL.QGLWidget):
-    def __init__(self, parent=None):
-        self.parent = parent
-        super(GLWidget, self).__init__(parent)
-        self.camera = Camera()
-        self.world = World(self)
-        self.action = None
-        self.action_amount = 1.0
-        self.spot_position = None
-        self.spot_direction = None
-        self.fixed_spot = False
-        self.frames_counted = 0
-        self.fps_iterations = 0
-        self.texture = TextureImage('texture.png')
-
-    def initializeGL(self):
-        self.qglClearColor(QtGui.QColor(0, 0, 150))
-
+    def initialize_gl(self):
         glEnable(GL_COLOR_MATERIAL)
         glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
 
@@ -407,20 +370,9 @@ class GLWidget(QtOpenGL.QGLWidget):
                      0, GL_RGB, self.texture.width, self.texture.height,
                      0, GL_RGB, GL_UNSIGNED_BYTE, &texture_array[0])
 
-        self.world.create()
+        self.create()
 
-        self.last_time = datetime.datetime.now()
-        self.current_time = datetime.datetime.now()
-
-    def resizeGL(self, width, height):
-        if height == 0:
-            height = 1
-
-        glViewport(0, 0, width, height)
-        self.parent.width = width
-        self.parent.height = height
-
-    def paintGL(self):
+    def update_gl(self):
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
         spot_direction = self.camera.get_spot_direction()
@@ -435,7 +387,7 @@ class GLWidget(QtOpenGL.QGLWidget):
             if self.spot_position is None:
                 self.spot_position = spot_position
             spot_position = self.spot_position
-        glLightiv(GL_LIGHT0, GL_SPOT_CUTOFF, self.parent.spot_slider.value())
+        glLightiv(GL_LIGHT0, GL_SPOT_CUTOFF, self.parent.parent.spot_slider.value())
         glTranslatef(*spot_position)
 
         glLightfv(GL_LIGHT0, GL_SPOT_DIRECTION, spot_direction)
@@ -443,17 +395,81 @@ class GLWidget(QtOpenGL.QGLWidget):
 
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
-        aspect = self.parent.width / self.parent.height
+        aspect = self.parent.parent.width / self.parent.parent.height
 
         GLU.gluPerspective(
-            self.parent.fov_slider.value(), aspect, 1.0, 100000.0)
+            self.parent.parent.fov_slider.value(), aspect, 1.0, 100000.0)
+        self.camera.update_gl()        
 
-        self.camera.update_gl()
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
 
+        glEnableClientState(GL_VERTEX_ARRAY)
+        glVertexPointer(3, GL_FLOAT, 0, self.vertices_ptr)
+
+        glEnableClientState(GL_NORMAL_ARRAY)
+        glNormalPointer(GL_FLOAT, 0, self.normals_ptr)
+
+        glEnableClientState(GL_TEXTURE_COORD_ARRAY)
+        glTexCoordPointer(2, GL_INT, 0, self.texcoords_ptr)
+
+        glDrawElements(GL_QUADS, self.indices_len,
+                       GL_UNSIGNED_INT, self.indices_ptr)
+
+    def update(self):
+        self.camera.update()
+
+        cdef tuple offset
+        cdef np.ndarray[float, ndim=2] vertices = self.vertices
+        cdef np.ndarray[long, ndim=1] random_cubes
+        cdef int n
+        cdef long i, per_cube = self.per_cube
+        DEF moved_cubes = 500
+
+        if self.action is not None:
+            offset = (0.0, self.action, 0.0)
+            random_cubes = np.random.randint(
+                len(vertices) / per_cube, size=moved_cubes) * per_cube
+            for n in range(moved_cubes):
+                i = random_cubes[n]
+                vertices[i:i + per_cube] += offset
+
+    def get_polygon_count(self):
+        return len(self.indices) / 4  # 4 points par face.
+
+    def get_status(self):
+        return '%s polygones: %s' % (self.camera.get_status(),
+                                     self.get_polygon_count())
+
+
+class GLWidget(QtOpenGL.QGLWidget):
+    def __init__(self, parent=None):
+        self.parent = parent
+        self.world = World(self)
+        self.frames_counted = 0
+        self.fps_iterations = 0
+        super(GLWidget, self).__init__(parent)
+
+    def initializeGL(self):
+        self.qglClearColor(QtGui.QColor(0, 0, 150))
+
+        self.world.initialize_gl()
+
+        self.last_time = datetime.datetime.now()
+        self.current_time = datetime.datetime.now()
+
+    def resizeGL(self, width, height):
+        if height == 0:
+            height = 1
+
+        glViewport(0, 0, width, height)
+        self.parent.width = width
+        self.parent.height = height
+
+    def paintGL(self):
         self.world.update_gl()
 
     def updateDispatcher(self):
-        self.camera.update()
         self.updateStatusBar()
         self.updateGL()
         self.fps_iterations += 1
@@ -461,10 +477,8 @@ class GLWidget(QtOpenGL.QGLWidget):
     def updateStatusBar(self):
         seconds_elapsed = (self.current_time - self.last_time).total_seconds()
         self.parent.statusBar().showMessage(
-            'fps: %s %s polygones: %s' % (
-                self.frames_counted / seconds_elapsed,
-                self.camera.get_status(),
-                self.world.get_polygon_count()))
+            'fps: %s %s' % (self.frames_counted / seconds_elapsed,
+                            self.world.get_status()))
 
     def updateFPS(self):
         self.last_time = self.current_time
@@ -599,7 +613,7 @@ class Window(QtGui.QMainWindow):
             return
         key = QKeyEvent.key()
         move_amount = self.speed_slider.value()
-        cam = self.glWidget.camera
+        cam = self.glWidget.world.camera
         if key == Qt.Key_Z:
             cam.dz += move_amount
         if key == Qt.Key_S:
@@ -620,7 +634,7 @@ class Window(QtGui.QMainWindow):
             return
         key = QKeyEvent.key()
         move_amount = self.speed_slider.value()
-        cam = self.glWidget.camera
+        cam = self.glWidget.world.camera
         if key == Qt.Key_Z:
             cam.dz -= move_amount
         if key == Qt.Key_S:
@@ -647,11 +661,11 @@ class Window(QtGui.QMainWindow):
         if self.mouse_locked:
             self.cursor().setPos(self.global_mouse_x, self.global_mouse_y)
 
-        self.glWidget.camera.ady -= (mouse_x - self.mouse_x) / 10.0
-        self.glWidget.camera.adx -= (mouse_y - self.mouse_y) / 10.0
+        self.glWidget.world.camera.ady -= (mouse_x - self.mouse_x) / 10.0
+        self.glWidget.world.camera.adx -= (mouse_y - self.mouse_y) / 10.0
 
     def wheelEvent(self, QWheelEvent):
-        self.glWidget.action_amount += QWheelEvent.delta() / 120.0
+        self.glWidget.world.action_step += QWheelEvent.delta() / 120.0
         self.mousePressEvent(QWheelEvent)
 
     def mousePressEvent(self, QMouseEvent):
@@ -660,11 +674,11 @@ class Window(QtGui.QMainWindow):
             return
         button = QMouseEvent.buttons()
         action = 0
-        action_amount = self.glWidget.action_amount
+        action_step = self.glWidget.world.action_step
         if button == Qt.LeftButton:
-            action += action_amount
+            action += action_step
         if button == Qt.RightButton:
-            action -= action_amount
+            action -= action_step
         if button == Qt.MiddleButton:
             self.glWidget.fixed_spot = not self.glWidget.fixed_spot
             if not self.glWidget.fixed_spot:
