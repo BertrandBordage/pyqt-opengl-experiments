@@ -7,7 +7,7 @@
 
 from __future__ import unicode_literals, division
 from libc.math cimport cos, sin, M_PI, M_PI_2
-from libc.stdio cimport printf
+from libc.stdio cimport puts, printf
 import datetime
 
 import numpy as np
@@ -317,7 +317,7 @@ cdef class World(object):
 
     cdef void create(self):
         start = datetime.datetime.now()
-        printf('Création du monde…\n')
+        puts('Création du monde…')
 
         cdef int n = 256
 
@@ -504,15 +504,15 @@ class Window(QtGui.QMainWindow):
         self.mouse_y = None
         self.mouse_locked = False
 
-        timer = QtCore.QTimer(self)
-        QtCore.QObject.connect(timer, QtCore.SIGNAL('timeout()'),
+        display_timer = QtCore.QTimer(self)
+        QtCore.QObject.connect(display_timer, QtCore.SIGNAL('timeout()'),
                                self.glWidget.updateDispatcher)
-        timer.start(1000 / 60)
+        display_timer.start(1000 / 60)
 
-        geometry_timer = QtCore.QTimer(self)
-        QtCore.QObject.connect(geometry_timer, QtCore.SIGNAL('timeout()'),
+        world_timer = QtCore.QTimer(self)
+        QtCore.QObject.connect(world_timer, QtCore.SIGNAL('timeout()'),
                                self.glWidget.world.update)
-        geometry_timer.start(1000 / 60)
+        world_timer.start(1000 / 60)
 
         statusbar_timer = QtCore.QTimer(self)
         QtCore.QObject.connect(statusbar_timer, QtCore.SIGNAL('timeout()'),
