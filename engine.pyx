@@ -21,7 +21,7 @@ from PyQt4.QtGui import (
     QPixmap, QCursor, QSlider, QGroupBox, QGridLayout, QLabel, QDockWidget)
 from diamond_square cimport build_height_map
 from utils cimport equalize_height_map, save_to_img
-from voronoi import voronoi_matrix
+from voronoi cimport voronoi_matrix
 
 
 cdef extern from 'GL/gl.h' nogil:
