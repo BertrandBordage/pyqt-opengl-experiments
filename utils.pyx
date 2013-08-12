@@ -16,7 +16,7 @@ cdef inline real uniform(real a, real b) nogil:
 i = 0
 
 
-cpdef inline np.ndarray[double, ndim=2] equalize_height_map(
+cpdef np.ndarray[double, ndim=2] equalize_height_map(
         np.ndarray[double, ndim=2] hmap, double m, double M):
     hmap -= hmap.min()
     cdef double hmap_max = hmap.max()
