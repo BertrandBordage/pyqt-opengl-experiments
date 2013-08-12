@@ -276,7 +276,7 @@ cdef class World(object):
         # Taken from http://stackoverflow.com/a/4714857/1576438
         indices_xz = np.arange(-n // 2, n // 2, dtype=b'float32')[
             np.rollaxis(np.indices((n,) * 2), 0, 2 + 1).reshape(-1, 2)]
-        indices_xyz = np.zeros((n ** 2, 3), dtype=b'float32')
+        indices_xyz = np.empty((n ** 2, 3), dtype=b'float32')
         indices_xyz[:, 0] = indices_xz[:, 0]
 
         height_map = equalize_height_map(continuous_map(n), -20.0, 20.0)
