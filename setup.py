@@ -25,7 +25,7 @@ ext_modules = [
     ext('diamond_square', numpy=True),
     ext('voronoi', numpy=True),
     ext('perturbation', numpy=True),
-    ext('engine', GL=True, GLU=True),
+    ext('engine', GL=True, GLU=True, numpy=True),
 ]
 
 
