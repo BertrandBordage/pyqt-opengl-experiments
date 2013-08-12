@@ -329,7 +329,7 @@ cdef class World(object):
         start = datetime.datetime.now()
         puts('Création du monde…')
 
-        cdef int n = 512
+        cdef int n = 256
 
         self.create_vertices(n)
         vertices_time = datetime.datetime.now()
