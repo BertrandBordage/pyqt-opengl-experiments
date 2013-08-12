@@ -22,12 +22,8 @@ cpdef np.ndarray[double, ndim=2] perturbate_array(
             new_y = <int> (y + d * sin(a))
             if new_x >= size:
                 new_x -= size
-            elif new_x < 0:
-                new_x += size
             if new_y >= size:
                 new_y -= size
-            elif new_y < 0:
-                new_y += size
             new_height_map[x, y] = height_map[new_x, new_y]
 
     if save:
