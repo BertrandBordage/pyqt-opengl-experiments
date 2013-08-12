@@ -6,6 +6,7 @@
 
 from libc.stdlib cimport rand, RAND_MAX
 cimport numpy as np
+import os
 from PIL import Image
 
 
@@ -29,6 +30,11 @@ cpdef inline save_to_img(np.ndarray m):
     global i
     m = equalize_height_map(m, 0.0, 255.0)
 
+    directory = 'maps'
+
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
     img = Image.fromarray(m.astype(b'uint8'))
-    img.save('maps/map%s.png' % i)
+    img.save(os.path.join(directory, 'map%s.png' % i))
     i += 1
