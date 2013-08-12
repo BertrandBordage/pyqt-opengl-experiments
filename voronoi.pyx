@@ -18,8 +18,8 @@ cpdef np.ndarray[double, ndim=2] voronoi_array(
         points + [-size, size], points + [size, -size]]))
 
     # Taken from http://stackoverflow.com/a/4714857/1576438
-    cdef np.ndarray a = np.arange(size)[
-        np.rollaxis(np.indices([size, size]), 0, 3).reshape(-1, 2)]
+    cdef np.ndarray a = np.rollaxis(np.indices([size, size]),
+                                    0, 3).reshape(-1, 2)
     cdef np.ndarray[double, ndim=2] m = tree.query(a, 2)[0]
     m = (-m[:, 0] + m[:, 1]).reshape(size, size)
 
