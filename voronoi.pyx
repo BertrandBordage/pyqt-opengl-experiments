@@ -18,7 +18,8 @@ cpdef np.ndarray[double, ndim=2] voronoi_array(
         [points,
          points - [size, 0], points + [size, 0],
          points - [0, size], points + [0, size],
-         points - [size, size], points + [size, size]])
+         points - [size, size], points + [size, size],
+         points + [-size, size], points + [size, -size]])
 
     cdef np.ndarray[double, ndim=2] m = np.zeros((size, size), dtype=b'double')
     cdef np.ndarray[double, ndim=1] distances
