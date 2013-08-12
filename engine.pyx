@@ -275,7 +275,7 @@ cdef class World(object):
         self.per_cube = len(cube_vertices)
         # Taken from http://stackoverflow.com/a/4714857/1576438
         indices_xz = np.arange(-n // 2, n // 2, dtype=b'float32')[
-            np.rollaxis(np.indices((n,) * 2), 0, 2 + 1).reshape(-1, 2)]
+            np.rollaxis(np.indices([n, n]), 0, 3).reshape(-1, 2)]
         indices_xyz = np.empty((n ** 2, 3), dtype=b'float32')
         indices_xyz[:, 0] = indices_xz[:, 0]
 
@@ -329,7 +329,7 @@ cdef class World(object):
         start = datetime.datetime.now()
         puts('Création du monde…')
 
-        cdef int n = 256
+        cdef int n = 512
 
         self.create_vertices(n)
         vertices_time = datetime.datetime.now()
