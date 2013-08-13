@@ -1,4 +1,4 @@
-cimport numpy as np
+from numpy cimport ndarray
 
-cpdef np.ndarray[double, ndim=2] perturbate_array(
-        np.ndarray[double, ndim=2] height_map, bint save=?)
+cpdef ndarray[double, ndim=2] perturbate_array(
+        ndarray[double, ndim=2] height_map, bint save=?)

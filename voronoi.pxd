@@ -1,4 +1,4 @@
-cimport numpy as np
+from numpy cimport ndarray
 
-cpdef np.ndarray[double, ndim=2] voronoi_array(
+cpdef ndarray[double, ndim=2] voronoi_array(
         int size, int n_points=?, bint save=?)

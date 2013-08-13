@@ -6,9 +6,11 @@
 
 from __future__ import unicode_literals, division
 from libc.math cimport pow
-import numpy as np
-cimport numpy as np
+from numpy cimport ndarray, import_array, PyArray_ZEROS, NPY_DOUBLE
 from utils cimport uniform, save_to_img
+
+
+import_array()
 
 
 cdef inline int _get_real_min(int mini, int size) nogil:
@@ -52,13 +54,13 @@ cdef inline float _random_coef(unsigned int step, float smoothing) nogil:
     return pow(<float>step, smoothing)
 
 
-cpdef np.ndarray[double, ndim=2] continuous_map(
-        int size, int amplitude=15, float smoothing=0.8, bint save=True):
+cpdef ndarray[double, ndim=2] continuous_map(
+        int size, int amplitude=15, float smoothing=0.8, bint save=False):
     cdef unsigned int orig_size, step, two_steps, x, y
     orig_size = size
     size += (size + 1) % 2
 
-    cdef np.ndarray[double, ndim=2] m = np.zeros((size, size))
+    m = PyArray_ZEROS(2, [size, size], NPY_DOUBLE, False)
     cdef double[:, :] m_view = m
 
 

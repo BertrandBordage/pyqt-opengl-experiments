@@ -1,4 +1,4 @@
-cimport numpy as np
+from numpy cimport ndarray
 
-cpdef np.ndarray[double, ndim=2] continuous_map(
-    int size, int amplitude=*, float smoothing=*, bint save=*)
+cpdef ndarray[double, ndim=2] continuous_map(
+    int size, int amplitude=?, float smoothing=?, bint save=?)

@@ -5,7 +5,7 @@
 
 
 from libc.stdlib cimport rand, RAND_MAX
-cimport numpy as np
+from numpy cimport ndarray
 import os
 from PIL import Image
 
@@ -17,8 +17,8 @@ cdef inline real uniform(real a, real b) nogil:
 i = 0
 
 
-cpdef np.ndarray[double, ndim=2] equalize_height_map(
-        np.ndarray[double, ndim=2] hmap, double m, double M):
+cpdef ndarray[double, ndim=2] equalize_height_map(
+        ndarray[double, ndim=2] hmap, double m, double M):
     hmap -= hmap.min()
     cdef double hmap_max = hmap.max()
     if hmap_max == 0.0:
@@ -26,7 +26,7 @@ cpdef np.ndarray[double, ndim=2] equalize_height_map(
     return m + (M - m) * hmap / hmap_max
 
 
-cpdef inline save_to_img(np.ndarray m):
+cpdef inline save_to_img(ndarray[double, ndim=2] m):
     global i
     m = equalize_height_map(m, 0.0, 255.0)
 
