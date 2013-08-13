@@ -1,5 +1,6 @@
 # cython: boundscheck=False
 # cython: wraparound=False
+# cython: cdivision=True
 
 from libc.math cimport cos, sin, M_PI
 from numpy cimport import_array, ndarray, PyArray_EMPTY, NPY_DOUBLE
@@ -26,16 +27,12 @@ cpdef ndarray[double, ndim=2] perturbate_array(
         for y in range(height_map.shape[1]):
             a = angles[x, y]
             d = distances[x, y]
-            new_x = <int> (x + d * cos(a))
-            new_y = <int> (y + d * sin(a))
-            if new_x < 0:
-                new_x += size
-            elif new_x >= size:
-                new_x -= size
-            if new_y < 0:
-                new_y += size
-            elif new_y >= size:
-                new_y -= size
+            new_x = x + <int>(d * cos(a))
+            new_y = y + <int>(d * sin(a))
+            if new_x < 0 or new_x >= size:
+                new_x %= size
+            if new_y < 0 or new_y >= size:
+                new_y %= size
             new_height_map[x, y] = height_map[new_x, new_y]
 
     if save:
