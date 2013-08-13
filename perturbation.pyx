@@ -13,7 +13,7 @@ import_array()
 cpdef ndarray[double, ndim=2] perturbate_array(
         ndarray[double, ndim=2] height_map, bint save=False):
     cdef int size = height_map.shape[0]
-    DEF magnitude = 0.25
+    DEF magnitude = 0.0625
     cdef ndarray[double, ndim=2] angles = \
         equalize_height_map(continuous_map(size), -M_PI, M_PI)
     cdef ndarray[double, ndim=2] distances = \
