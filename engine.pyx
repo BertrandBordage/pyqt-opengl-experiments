@@ -34,6 +34,7 @@ cdef extern from 'GL/gl.h' nogil:
     ctypedef int          GLsizei
     ctypedef float        GLfloat
     ctypedef double       GLdouble
+    int GL_TRUE
     int GL_UNSIGNED_BYTE
     int GL_INT
     int GL_UNSIGNED_INT
@@ -47,6 +48,7 @@ cdef extern from 'GL/gl.h' nogil:
     int GL_PROJECTION
     int GL_DEPTH_TEST
     int GL_LIGHTING
+    int GL_LIGHT_MODEL_LOCAL_VIEWER
     int GL_LIGHT0
     int GL_TEXTURE_2D
     int GL_TEXTURE_MAG_FILTER
@@ -62,10 +64,11 @@ cdef extern from 'GL/gl.h' nogil:
     int GL_POSITION
     int GL_SPOT_DIRECTION
     int GL_AMBIENT_AND_DIFFUSE
-    int GL_FRONT_AND_BACK
+    int GL_FRONT
     int GL_TRIANGLES
     void glClear(GLbitfield mask)
     void glEnable(GLenum cap)
+    void glLightModeli(GLenum pname, GLint param)
     void glLightf(GLenum light, GLenum pname, GLfloat param)
     void glLightfv(GLenum light, GLenum pname, GLfloat *params)
     void glLighti(GLenum light, GLenum pname, GLint param)
@@ -92,6 +95,10 @@ cdef extern from 'GL/gl.h' nogil:
 cdef extern from 'GL/glu.h' nogil:
     void gluPerspective(GLdouble fovy, GLdouble aspect,
                         GLdouble zNear, GLdouble zFar)
+    void gluLookAt(GLdouble eyeX, GLdouble eyeY, GLdouble eyeZ,
+                   GLdouble centerX, GLdouble centerY, GLdouble centerZ,
+                   GLdouble upX, GLdouble upY, GLdouble upZ)
+
 
 cdef class TextureImage(object):
     cdef img
@@ -131,9 +138,6 @@ cdef class Camera(object):
         self.adx = 0.0  # degrés
         self.ady = 0.0  # degrés
 
-    cdef Coords position(self) nogil:
-        return [self.x, -self.y, self.z]
-
     cdef inline float arx(self) nogil:
         """
         Angle de l'axe x, en radians.
@@ -146,19 +150,20 @@ cdef class Camera(object):
         """
         return self.ady * M_PI / 180.0
 
-    cdef inline Coords get_spot_position(self) nogil:
-        return [-self.x, self.y, -self.z]
+    cdef inline Coords position(self) nogil:
+        return [self.x, self.y, self.z]
 
-    cdef inline Coords get_spot_direction(self) nogil:
+    cdef inline Coords direction(self) nogil:
         cdef float arx = self.arx()
         cdef float ary = self.ary()
-        return [-sin(ary) * cos(arx), sin(arx), -cos(ary) * cos(arx)]
+        return [sin(ary) * cos(arx), sin(arx), cos(ary) * cos(arx)]
 
     cdef void update_gl(self) nogil:
-        glRotatef(self.adx, -1.0, 0.0, 0.0)
-        glRotatef(self.ady, 0.0, -1.0, 0.0)
         p = self.position()
-        glTranslatef(p.x, p.y, p.z)
+        d = self.direction()
+        gluLookAt(p.x, p.y, p.z,
+                  p.x + d.x, p.y + d.y, p.z + d.z,
+                  0.0, 1.0, 0.0)
 
     cdef void update(self) nogil:
         self.adx = limit_float(self.adx, -90.0, 90.0)
@@ -316,14 +321,15 @@ cdef class World(object):
 
     def initialize_gl(self):
         glEnable(GL_COLOR_MATERIAL)
-        glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE)
+        glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE)
 
-        glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, [0.5, 0.5, 0.5, 0.5])
-        glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 100.0)
+        glMaterialfv(GL_FRONT, GL_SPECULAR, [0.5, 0.5, 0.5, 0.5])
+        glMaterialf(GL_FRONT, GL_SHININESS, 100.0)
 
         glEnable(GL_LIGHTING)
         glEnable(GL_LIGHT0)
         glEnable(GL_DEPTH_TEST)
+        glLightModeli(GL_LIGHT_MODEL_LOCAL_VIEWER, GL_TRUE)
         glLightf(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, 0.00001)
         glLightfv(GL_LIGHT0, GL_DIFFUSE, [0.7, 0.7, 0.7, 0.7])
 
@@ -344,15 +350,15 @@ cdef class World(object):
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
-        spot_position = self.camera.get_spot_position()
+        spot_position = self.camera.position()
         if self.fixed_spot:
             if self.new_fixed_spot:
                 self.spot_position = spot_position
             spot_position = self.spot_position
         p = spot_position
-        glTranslatef(p.x, p.y, p.z)
+        glLightfv(GL_LIGHT0, GL_POSITION, [p.x, p.y, p.z, 1.0])
 
-        spot_direction = self.camera.get_spot_direction()
+        spot_direction = self.camera.direction()
         if self.fixed_spot:
             if self.new_fixed_spot:
                 self.spot_direction = spot_direction
@@ -361,7 +367,6 @@ cdef class World(object):
         d = spot_direction
         glLighti(GL_LIGHT0, GL_SPOT_CUTOFF, spot_cutoff)
         glLightfv(GL_LIGHT0, GL_SPOT_DIRECTION, [d.x, d.y, d.z])
-        glLightfv(GL_LIGHT0, GL_POSITION, [0.0, 0.0, 0.0, 1.0])
 
         glMatrixMode(GL_PROJECTION)
         glLoadIdentity()
@@ -403,7 +408,7 @@ cdef class World(object):
         # Make the y coordinate of the camera follow the mesh.
         ys = vertices.reshape(-1, 3)[:, 1].reshape(-1, self.n)
         hn = self.n // 2
-        result = 10 + ys[hn - self.camera.x, hn - self.camera.z]
+        result = 10 + ys[hn + self.camera.x, hn + self.camera.z]
         diff = self.camera.y - result
         if diff < 0:
             self.camera.y -= diff / 4
