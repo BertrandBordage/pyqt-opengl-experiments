@@ -63,7 +63,7 @@ cdef extern from 'GL/gl.h' nogil:
     int GL_SPOT_DIRECTION
     int GL_AMBIENT_AND_DIFFUSE
     int GL_FRONT_AND_BACK
-    int GL_QUADS
+    int GL_TRIANGLES
     void glClear(GLbitfield mask)
     void glEnable(GLenum cap)
     void glLightf(GLenum light, GLenum pname, GLfloat param)
@@ -105,73 +105,9 @@ cdef class TextureImage(object):
         self.img = Image.open(filename)
         self.width, self.height = self.img.size
         self.str = self.img.tostring()
-        cpdef np.ndarray[char, ndim=1] array = np.array(list(self.str))
+        cdef np.ndarray[char, ndim=1] array = np.array(list(self.str))
         self.array = array
         self.array_ptr = &array[0]
-
-
-cdef class Cube(object):
-    cdef np.ndarray vertices, normals, texcoords, indices
-
-    def __cinit__(self):
-        self.vertices = np.array([
-            1, 1, 0,  # Front  top    left
-            0, 1, 0,  # Front  top    right
-            0, 0, 0,  # Front  bottom right
-            1, 0, 0,  # Front  bottom left
-
-            0, 1, 1,  # Back   top    right
-            1, 1, 1,  # Back   top    left
-            1, 0, 1,  # Back   bottom left
-            0, 0, 1,  # Back   bottom right
-
-            1, 1, 1,  # Top    back   left
-            0, 1, 1,  # Top    back   right
-            0, 1, 0,  # Top    front  right
-            1, 1, 0,  # Top    front  left
-
-            1, 0, 0,  # Bottom front  left
-            0, 0, 0,  # Bottom front  right
-            0, 0, 1,  # Bottom back   right
-            1, 0, 1,  # Bottom back   left
-
-            1, 1, 1,  # Left   top    back
-            1, 1, 0,  # Left   top    front
-            1, 0, 0,  # Left   bottom front
-            1, 0, 1,  # Left   bottom back
-
-            0, 1, 0,  # Right  top    front
-            0, 1, 1,  # Right  top    back
-            0, 0, 1,  # Right  bottom back
-            0, 0, 0,  # Right  bottom front
-        ], dtype=b'float32').reshape(-1, 3)
-
-        self.normals = np.array([
-            # Front face
-            0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1,
-            # Back face
-            0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1,
-            # Top face
-            0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0,
-            # Bottom face
-            0, -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0,
-            # Left face
-            1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0,
-            # Right face
-            -1, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0,
-        ], dtype=b'float32')
-
-        self.texcoords = np.array([[0, 0], [1, 0], [1, 1], [0, 1]],
-                                  dtype=b'int32')
-
-        self.indices = np.array([
-            0, 1, 2, 3,  # Front  face
-            4, 5, 6, 7,  # Back   face
-            8, 9, 10, 11,  # Top    face
-            12, 13, 14, 15,  # Bottom face
-            16, 17, 18, 19,  # Left   face
-            20, 21, 22, 23,  # Right  face
-        ], dtype=b'uint32')
 
 
 cdef inline float limit_float(float f, float m, float M) nogil:
@@ -238,27 +174,134 @@ cdef class Camera(object):
             self.x, self.y, self.z, self.adx, self.ady)
 
 
-cdef class World(object):
-    cdef public parent
-    cdef Cube cube
-    cdef TextureImage texture
-    cdef readonly int per_cube
+cdef np.ndarray[double, ndim=2] build_height_map(n):
+    cdef np.ndarray[double, ndim=2] height_map = equalize_height_map(
+        continuous_map(n), -20.0, 20.0)
+    height_map += equalize_height_map(voronoi_array(n), -17.0, 17.0)
+    save_to_img(height_map)
+    height_map = perturbate_array(height_map)
+    save_to_img(height_map)
+    return height_map
+
+
+cdef inline void normalize_vectors(np.ndarray[float, ndim=2] vectors):
+    cdef np.ndarray[float, ndim=2] squared = vectors ** 2
+    cdef np.ndarray[float, ndim=1] lens = np.sqrt(
+        squared[:, 0] + squared[:, 1] + squared[:, 2])
+    vectors[:, 0] /= lens
+    vectors[:, 1] /= lens
+    vectors[:, 2] /= lens
+
+
+cdef class Mesh(object):
+    cdef int n
     cdef np.ndarray vertices, normals, texcoords, indices
     cdef float* vertices_ptr
     cdef float* normals_ptr
     cdef int* texcoords_ptr
     cdef unsigned int* indices_ptr
     cdef int indices_len
+
+    def __cinit__(self, n):
+        self.n = n
+
+        start = datetime.datetime.now()
+        puts('Création du monde…')
+
+        self.create_vertices(n)
+        vertices_time = datetime.datetime.now()
+        printf('Chargement des points terminé en %f secondes.\n',
+               <double> (vertices_time - start).total_seconds())
+
+        self.create_polygons(n)
+        polygons_time = datetime.datetime.now()
+        printf('Chargement des polygones terminé en %f secondes.\n',
+               <double> (polygons_time - vertices_time).total_seconds())
+
+        self.create_normals(n)
+        normals_time = datetime.datetime.now()
+        printf('Chargement des vecteurs normaux terminé en %f secondes.\n',
+               <double> (normals_time - polygons_time).total_seconds())
+
+        self.create_texture_coordinates(n)
+        texture_time = datetime.datetime.now()
+        printf('Chargement des textures terminé en %f secondes.\n',
+               <double> (texture_time - normals_time).total_seconds())
+
+        printf('Temps total de chargement : %f secondes.\n',
+               <double> (texture_time - start).total_seconds())
+
+    cdef void create_vertices(self, int n):
+        cdef np.ndarray[float, ndim=2] indices_xz
+        # Taken from http://stackoverflow.com/a/4714857/1576438
+        indices_xz = np.arange(-n // 2, n // 2, dtype=b'float32')[
+            np.rollaxis(np.indices([n, n]), 0, 3).reshape(-1, 2)]
+        cdef np.ndarray[float, ndim=2] vertices = np.column_stack((
+            indices_xz[:, 0],
+            build_height_map(n).astype(b'float32').flatten(),
+            indices_xz[:, 1]))
+        self.vertices = vertices
+
+        # Builds a pointer for optimization.
+        self.vertices_ptr = &vertices[0, 0]
+
+    cdef void create_polygons(self, n):
+        cdef np.ndarray[unsigned int, ndim=2] indices = (
+            (np.array([0, 1, n, 1, n+1, n], dtype=b'uint32')
+             + np.arange(n - 1, dtype=b'uint32').reshape(-1, 1)).flatten()
+            + np.arange((n - 1) ** 2, step=n, dtype=b'uint32').reshape(-1, 1)
+        ).reshape(-1, 3)
+
+        # Builds a pointer for optimization.
+        self.indices = indices
+        self.indices_ptr = &indices[0, 0]
+
+        self.indices_len = indices.shape[0] * indices.shape[1]
+
+    cdef void create_normals(self, n):
+        # Taken from https://sites.google.com/site/dlampetest/python/calculating-normals-of-a-triangle-mesh-using-numpy
+        cdef np.ndarray[float, ndim=2] normals = np.zeros(
+            (n ** 2, 3), dtype=b'float32')
+        cdef np.ndarray[unsigned int, ndim=2] indices = self.indices
+        cdef np.ndarray[float, ndim=3] faces = self.vertices[indices]
+        cdef np.ndarray[float, ndim=2] normals_per_face = np.cross(
+            faces[::, 1] - faces[::, 0], faces[::, 2] - faces[::, 0])
+        normalize_vectors(normals_per_face)
+        normals[indices[:, 0]] += normals_per_face
+        normals[indices[:, 1]] += normals_per_face
+        normals[indices[:, 2]] += normals_per_face
+        normalize_vectors(normals)
+
+        # Builds a pointer for optimization.
+        self.normals = normals
+        self.normals_ptr = &normals[0, 0]
+
+    cdef void create_texture_coordinates(self, n):
+        cdef np.ndarray[int, ndim=3] texcoords = np.tile(
+            np.concatenate([
+                np.tile([[0, 0], [0, 1]], (n // 2, 1, 1)),
+                np.tile([[1, 0], [1, 1]], (n // 2, 1, 1))]),
+            (n // 2, 1, 1)).astype(b'int32')
+
+        # Builds a pointer for optimization.
+        self.texcoords = texcoords
+        self.texcoords_ptr = &texcoords[0, 0, 0]
+
+
+cdef class World(object):
+    cdef public parent
+    cdef int n
+    cdef TextureImage texture
+    cdef Mesh mesh
     
     cdef public Camera camera
     cdef Coords spot_position, spot_direction
-    cdef bint fixed_spot, new_fixed_spot
+    cdef public bint fixed_spot, new_fixed_spot
     cdef public action
     cdef public float action_step
 
     def __cinit__(self, parent):
         self.parent = parent
-        self.cube = Cube()
         self.texture = TextureImage('texture.png')
 
         self.camera = Camera()
@@ -266,93 +309,10 @@ cdef class World(object):
         self.new_fixed_spot = True
 
         self.action = None
-        self.action_step = 1.0        
+        self.action_step = 1.0
 
-    cdef void create_vertices(self, int n):
-        cdef np.ndarray[float, ndim=2] cube_vertices, indices_xz, indices_xyz
-        cdef np.ndarray[double, ndim=2] height_map
-        cube_vertices = self.cube.vertices
-        self.per_cube = len(cube_vertices)
-        # Taken from http://stackoverflow.com/a/4714857/1576438
-        indices_xz = np.arange(-n // 2, n // 2, dtype=b'float32')[
-            np.rollaxis(np.indices([n, n]), 0, 3).reshape(-1, 2)]
-        indices_xyz = np.empty((n ** 2, 3), dtype=b'float32')
-        indices_xyz[:, 0] = indices_xz[:, 0]
-
-        height_map = equalize_height_map(continuous_map(n), -20.0, 20.0)
-        height_map += equalize_height_map(voronoi_array(n), -17.0, 17.0)
-        save_to_img(height_map)
-        height_map = perturbate_array(height_map)
-        indices_xyz[:, 1] = height_map.flatten()
-
-        indices_xyz[:, 2] = indices_xz[:, 1]
-        cdef np.ndarray[float, ndim=2] vertices = (
-            cube_vertices + indices_xyz.reshape(-1, 1, 3)
-        ).reshape(-1, 3)
-        self.vertices = vertices
-
-        # Builds a pointer for optimization.
-        self.vertices_ptr = &vertices[0, 0]
-
-    cdef void create_normals(self):
-        cdef np.ndarray[float, ndim=1] normals = np.tile(
-            self.cube.normals,
-            (len(self.vertices) / self.per_cube))
-
-        # Builds a pointer for optimization.
-        self.normals = normals
-        self.normals_ptr = &normals[0]
-
-    cdef void create_texture_coordinates(self):
-        cdef np.ndarray[int, ndim=3] texcoords = np.tile(
-            self.cube.texcoords,
-            (len(self.vertices) / self.per_cube, 6, 1))
-
-        # Builds a pointer for optimization.
-        self.texcoords = texcoords
-        self.texcoords_ptr = &texcoords[0, 0, 0]
-
-    cdef void create_polygons(self, int n):
-        cdef np.ndarray[unsigned int, ndim=1] indices = (
-             self.cube.indices + np.arange(
-                 self.per_cube * n ** 2, step=self.per_cube,
-                 dtype=b'uint32').reshape(-1, 1)
-        ).flatten()
-
-        # Builds a pointer for optimization.
-        self.indices = indices
-        self.indices_ptr = &indices[0]
-
-        self.indices_len = len(self.indices)
-
-    cdef void create(self):
-        start = datetime.datetime.now()
-        puts('Création du monde…')
-
-        cdef int n = 256
-
-        self.create_vertices(n)
-        vertices_time = datetime.datetime.now()
-        printf('Chargement des points terminé en %f secondes.\n',
-               <double>(vertices_time - start).total_seconds())
-
-        self.create_normals()
-        normals_time = datetime.datetime.now()
-        printf('Chargement des vecteurs normaux terminé en %f secondes.\n',
-               <double>(normals_time - vertices_time).total_seconds())
-
-        self.create_texture_coordinates()
-        texture_time = datetime.datetime.now()
-        printf('Chargement des textures terminé en %f secondes.\n',
-               <double>(texture_time - normals_time).total_seconds())
-
-        self.create_polygons(n)
-        polygon_time = datetime.datetime.now()
-        printf('Chargement des polygones terminé en %f secondes.\n',
-               <double>(polygon_time - vertices_time).total_seconds())
-
-        printf('Temps total de chargement : %f secondes.\n',
-               <double>(polygon_time - start).total_seconds())
+        self.n = n = 512
+        self.mesh = Mesh(n)
 
     def initialize_gl(self):
         glEnable(GL_COLOR_MATERIAL)
@@ -364,7 +324,7 @@ cdef class World(object):
         glEnable(GL_LIGHTING)
         glEnable(GL_LIGHT0)
         glEnable(GL_DEPTH_TEST)
-        glLightf(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, 0.00005)
+        glLightf(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, 0.00001)
         glLightfv(GL_LIGHT0, GL_DIFFUSE, [0.7, 0.7, 0.7, 0.7])
 
         glEnable(GL_TEXTURE_2D)
@@ -373,8 +333,6 @@ cdef class World(object):
         glTexImage2D(GL_TEXTURE_2D,
                      0, GL_RGB, self.texture.width, self.texture.height,
                      0, GL_RGB, GL_UNSIGNED_BYTE, self.texture.array_ptr)
-
-        self.create()
 
     def update_gl(self):
         self.camera.update()
@@ -415,35 +373,45 @@ cdef class World(object):
         glLoadIdentity()
 
         glEnableClientState(GL_VERTEX_ARRAY)
-        glVertexPointer(3, GL_FLOAT, 0, self.vertices_ptr)
+        glVertexPointer(3, GL_FLOAT, 0, self.mesh.vertices_ptr)
 
         glEnableClientState(GL_NORMAL_ARRAY)
-        glNormalPointer(GL_FLOAT, 0, self.normals_ptr)
+        glNormalPointer(GL_FLOAT, 0, self.mesh.normals_ptr)
 
         glEnableClientState(GL_TEXTURE_COORD_ARRAY)
-        glTexCoordPointer(2, GL_INT, 0, self.texcoords_ptr)
+        glTexCoordPointer(2, GL_INT, 0, self.mesh.texcoords_ptr)
 
-        glDrawElements(GL_QUADS, self.indices_len,
-                       GL_UNSIGNED_INT, self.indices_ptr)
+        glDrawElements(GL_TRIANGLES, self.mesh.indices_len,
+                       GL_UNSIGNED_INT, self.mesh.indices_ptr)
 
     def update(self):
         cdef tuple offset
-        cdef np.ndarray[float, ndim=2] vertices = self.vertices
-        cdef np.ndarray[long, ndim=1] random_cubes
+        cdef np.ndarray[float, ndim=2] vertices = self.mesh.vertices
+        cdef np.ndarray[long, ndim=1] random_vertices
         cdef int n
-        cdef long i, per_cube = self.per_cube
-        DEF moved_cubes = 500
+        cdef long i
+        DEF moved_vertices = 500
 
         if self.action is not None:
             offset = (0.0, self.action, 0.0)
-            random_cubes = np.random.randint(
-                len(vertices) / per_cube, size=moved_cubes) * per_cube
-            for n in range(moved_cubes):
-                i = random_cubes[n]
-                vertices[i:i + per_cube] += offset
+            random_vertices = np.random.randint(
+                len(vertices), size=moved_vertices)
+            for n in range(moved_vertices):
+                i = random_vertices[n]
+                vertices[i:i + 1] += offset
+
+        # Make the y coordinate of the camera follow the mesh.
+        ys = vertices.reshape(-1, 3)[:, 1].reshape(-1, self.n)
+        hn = self.n // 2
+        result = 10 + ys[hn - self.camera.x, hn - self.camera.z]
+        diff = self.camera.y - result
+        if diff < 0:
+            self.camera.y -= diff / 4
+        else:
+            self.camera.y -= diff / 20
 
     cdef int get_polygon_count(self):
-        return len(self.indices) / 4  # 4 points par face.
+        return self.mesh.indices_len / 3  # 3 points par face.
 
     def get_status(self):
         return '%s polygones: %d' % (self.camera.get_status(),
@@ -582,17 +550,19 @@ class Window(QtGui.QMainWindow):
         <b>Espace</b> : Monter<br/>
         <b>Maj</b> : Descendre<br/><br/>
 
-        <b>Clic gauche</b> : Déplacer des cubes par centaines<br/>
+        <b>Clic gauche</b> : Déplacer des points par centaines<br/>
         <b>Clic droit</b> : Les déplacer dans l’autre sens<br/>
-        <b>Molette</b> : Changer la vitesse de déplacement des cubes<br/><br/>
+        <b>Molette</b> : Changer la vitesse de déplacement des points<br/><br/>
+
+        <b>Clic molette</b> : Figer la source de lumière<br/><br/>
 
         <b>Échap</b> : Relâcher la souris
         """)
         self.text.setReadOnly(True)
-        self.text.setMaximumHeight(280)
-        controls_layout.addWidget(self.text, 0, 0)
+        self.text.setMaximumHeight(350)
+        controls_layout.addWidget(self.text, 0, 0, 1, 2)
 
-        controls_layout.addWidget(QLabel('Champ de vision'), 1, 0)
+        controls_layout.addWidget(QLabel('Champ\nde vision'), 1, 0)
         self.fov_slider = QSlider(Qt.Horizontal)
         self.fov_slider.setRange(30, 90)
         self.fov_slider.setValue(45)
@@ -688,8 +658,8 @@ class Window(QtGui.QMainWindow):
         if button == Qt.RightButton:
             action -= action_step
         if button == Qt.MiddleButton:
-            self.glWidget.fixed_spot = not self.glWidget.fixed_spot
-            if not self.glWidget.fixed_spot:
+            self.glWidget.world.fixed_spot = not self.glWidget.world.fixed_spot
+            if self.glWidget.world.fixed_spot:
                 self.glWidget.world.new_fixed_spot = True
         self.glWidget.world.action = action or None
 
