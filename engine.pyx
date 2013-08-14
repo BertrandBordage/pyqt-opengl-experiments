@@ -10,9 +10,10 @@ from libc.math cimport cos, sin, M_PI, M_PI_2
 from libc.stdio cimport puts, printf
 import datetime
 
-from numpy cimport ndarray
-from numpy import (array as np_array, sqrt as np_sqrt, arange, rollaxis,
-                   indices, column_stack, zeros, cross, concatenate, tile)
+from numpy cimport (ndarray, import_array, PyArray_Arange, PyArray_ZEROS,
+                    PyArray_Concatenate, NPY_FLOAT, NPY_UINT32)
+from numpy import (array as np_array, sqrt as np_sqrt, rollaxis,
+                   indices, column_stack, tile)
 from numpy.random import randint as np_randint
 from PIL import Image
 from PyQt4 import QtCore
@@ -22,9 +23,12 @@ from PyQt4 import QtOpenGL
 from PyQt4.QtGui import (
     QPixmap, QCursor, QSlider, QGroupBox, QGridLayout, QLabel, QDockWidget)
 from diamond_square cimport continuous_map
-from utils cimport equalize_height_map, save_to_img
+from utils cimport equalize_height_map
 from perturbation cimport perturbate_array
 from voronoi cimport voronoi_array
+
+
+import_array()
 
 
 cdef extern from 'GL/gl.h' nogil:
@@ -198,6 +202,16 @@ cdef void normalize_vectors(ndarray[float, ndim=2] vectors):
     vectors[:, 2] /= lens
 
 
+cdef ndarray[float, ndim=2] cross_product(
+        ndarray[float, ndim=2] a, ndarray[float, ndim=2] b):
+    cdef ndarray a0 = a[:, 0], a1 = a[:, 1], a2 = a[:, 2], \
+                 b0 = b[:, 0], b1 = b[:, 1], b2 = b[:, 2]
+    cdef ndarray x = a1*b2 - a2*b1, \
+                 y = a2*b0 - a0*b2, \
+                 z = a0*b1 - a1*b0
+    return np_array([x, y, z]).swapaxes(0, -1)
+
+
 cdef class Mesh(object):
     cdef int n
     cdef ndarray vertices, normals, texcoords, indices
@@ -239,7 +253,7 @@ cdef class Mesh(object):
     cdef void create_vertices(self, int n):
         cdef ndarray[float, ndim=2] indices_xz
         # Taken from http://stackoverflow.com/a/4714857/1576438
-        indices_xz = arange(-n // 2, n // 2, dtype=b'float32')[
+        indices_xz = PyArray_Arange(-n // 2, n // 2, 1, NPY_FLOAT)[
             rollaxis(indices([n, n]), 0, 3).reshape(-1, 2)]
         cdef ndarray[float, ndim=2] vertices = column_stack((
             indices_xz[:, 0],
@@ -250,11 +264,11 @@ cdef class Mesh(object):
         # Builds a pointer for optimization.
         self.vertices_ptr = &vertices[0, 0]
 
-    cdef void create_polygons(self, n):
+    cdef void create_polygons(self, int n):
         cdef ndarray[unsigned int, ndim=2] indices = (
             (np_array([0, 1, n, 1, n+1, n], dtype=b'uint32')
-             + arange(n - 1, dtype=b'uint32').reshape(-1, 1)).flatten()
-            + arange((n - 1) ** 2, step=n, dtype=b'uint32').reshape(-1, 1)
+             + PyArray_Arange(0, n - 1, 1, NPY_UINT32).reshape(-1, 1)).flatten()
+            + PyArray_Arange(0, (n - 1) ** 2, n, NPY_UINT32).reshape(-1, 1)
         ).reshape(-1, 3)
 
         # Builds a pointer for optimization.
@@ -263,29 +277,31 @@ cdef class Mesh(object):
 
         self.indices_len = indices.shape[0] * indices.shape[1]
 
-    cdef void create_normals(self, n):
+    cdef void create_normals(self, int n):
         # Taken from https://sites.google.com/site/dlampetest/python/calculating-normals-of-a-triangle-mesh-using-numpy
-        cdef ndarray[float, ndim=2] normals = zeros(
-            (n ** 2, 3), dtype=b'float32')
-        cdef ndarray[unsigned int, ndim=2] indices = self.indices
+        cdef ndarray[float, ndim=2] normals = PyArray_ZEROS(
+            2, [n ** 2, 3], NPY_FLOAT, 0)
+        indices = self.indices
         cdef ndarray[float, ndim=3] faces = self.vertices[indices]
-        cdef ndarray[float, ndim=2] normals_per_face = cross(
-            faces[::, 1] - faces[::, 0], faces[::, 2] - faces[::, 0])
+        first_vertices = faces[::, 0]
+        cdef ndarray[float, ndim=2] normals_per_face = cross_product(
+            faces[::, 1] - first_vertices, faces[::, 2] - first_vertices)
         normalize_vectors(normals_per_face)
-        normals[indices[:, 0]] += normals_per_face
-        normals[indices[:, 1]] += normals_per_face
-        normals[indices[:, 2]] += normals_per_face
+        indices = indices.swapaxes(0, -1)
+        normals[indices[0]] += normals_per_face
+        normals[indices[1]] += normals_per_face
+        normals[indices[2]] += normals_per_face
         normalize_vectors(normals)
 
         # Builds a pointer for optimization.
         self.normals = normals
         self.normals_ptr = &normals[0, 0]
 
-    cdef void create_texture_coordinates(self, n):
+    cdef void create_texture_coordinates(self, int n):
         cdef ndarray[int, ndim=3] texcoords = tile(
-            concatenate([
+            PyArray_Concatenate([
                 tile([[0, 0], [0, 1]], (n // 2, 1, 1)),
-                tile([[1, 0], [1, 1]], (n // 2, 1, 1))]),
+                tile([[1, 0], [1, 1]], (n // 2, 1, 1))], 0),
             (n // 2, 1, 1)).astype(b'int32')
 
         # Builds a pointer for optimization.
