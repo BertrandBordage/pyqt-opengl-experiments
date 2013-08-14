@@ -10,8 +10,10 @@ from libc.math cimport cos, sin, M_PI, M_PI_2
 from libc.stdio cimport puts, printf
 import datetime
 
-import numpy as np
 from numpy cimport ndarray
+from numpy import (array as np_array, sqrt as np_sqrt, arange, rollaxis,
+                   indices, column_stack, zeros, cross, concatenate, tile)
+from numpy.random import randint as np_randint
 from PIL import Image
 from PyQt4 import QtCore
 from PyQt4.QtCore import Qt
@@ -112,7 +114,7 @@ cdef class TextureImage(object):
         self.img = Image.open(filename)
         self.width, self.height = self.img.size
         self.str = self.img.tostring()
-        cdef ndarray[char, ndim=1] array = np.array(list(self.str))
+        cdef ndarray[char, ndim=1] array = np_array(list(self.str))
         self.array = array
         self.array_ptr = &array[0]
 
@@ -191,7 +193,7 @@ cdef ndarray[double, ndim=2] build_height_map(n):
 
 cdef inline void normalize_vectors(ndarray[float, ndim=2] vectors):
     cdef ndarray[float, ndim=2] squared = vectors ** 2
-    cdef ndarray[float, ndim=1] lens = np.sqrt(
+    cdef ndarray[float, ndim=1] lens = np_sqrt(
         squared[:, 0] + squared[:, 1] + squared[:, 2])
     vectors[:, 0] /= lens
     vectors[:, 1] /= lens
@@ -239,9 +241,9 @@ cdef class Mesh(object):
     cdef void create_vertices(self, int n):
         cdef ndarray[float, ndim=2] indices_xz
         # Taken from http://stackoverflow.com/a/4714857/1576438
-        indices_xz = np.arange(-n // 2, n // 2, dtype=b'float32')[
-            np.rollaxis(np.indices([n, n]), 0, 3).reshape(-1, 2)]
-        cdef ndarray[float, ndim=2] vertices = np.column_stack((
+        indices_xz = arange(-n // 2, n // 2, dtype=b'float32')[
+            rollaxis(indices([n, n]), 0, 3).reshape(-1, 2)]
+        cdef ndarray[float, ndim=2] vertices = column_stack((
             indices_xz[:, 0],
             build_height_map(n).astype(b'float32').flatten(),
             indices_xz[:, 1]))
@@ -252,9 +254,9 @@ cdef class Mesh(object):
 
     cdef void create_polygons(self, n):
         cdef ndarray[unsigned int, ndim=2] indices = (
-            (np.array([0, 1, n, 1, n+1, n], dtype=b'uint32')
-             + np.arange(n - 1, dtype=b'uint32').reshape(-1, 1)).flatten()
-            + np.arange((n - 1) ** 2, step=n, dtype=b'uint32').reshape(-1, 1)
+            (np_array([0, 1, n, 1, n+1, n], dtype=b'uint32')
+             + arange(n - 1, dtype=b'uint32').reshape(-1, 1)).flatten()
+            + arange((n - 1) ** 2, step=n, dtype=b'uint32').reshape(-1, 1)
         ).reshape(-1, 3)
 
         # Builds a pointer for optimization.
@@ -265,11 +267,11 @@ cdef class Mesh(object):
 
     cdef void create_normals(self, n):
         # Taken from https://sites.google.com/site/dlampetest/python/calculating-normals-of-a-triangle-mesh-using-numpy
-        cdef ndarray[float, ndim=2] normals = np.zeros(
+        cdef ndarray[float, ndim=2] normals = zeros(
             (n ** 2, 3), dtype=b'float32')
         cdef ndarray[unsigned int, ndim=2] indices = self.indices
         cdef ndarray[float, ndim=3] faces = self.vertices[indices]
-        cdef ndarray[float, ndim=2] normals_per_face = np.cross(
+        cdef ndarray[float, ndim=2] normals_per_face = cross(
             faces[::, 1] - faces[::, 0], faces[::, 2] - faces[::, 0])
         normalize_vectors(normals_per_face)
         normals[indices[:, 0]] += normals_per_face
@@ -282,10 +284,10 @@ cdef class Mesh(object):
         self.normals_ptr = &normals[0, 0]
 
     cdef void create_texture_coordinates(self, n):
-        cdef ndarray[int, ndim=3] texcoords = np.tile(
-            np.concatenate([
-                np.tile([[0, 0], [0, 1]], (n // 2, 1, 1)),
-                np.tile([[1, 0], [1, 1]], (n // 2, 1, 1))]),
+        cdef ndarray[int, ndim=3] texcoords = tile(
+            concatenate([
+                tile([[0, 0], [0, 1]], (n // 2, 1, 1)),
+                tile([[1, 0], [1, 1]], (n // 2, 1, 1))]),
             (n // 2, 1, 1)).astype(b'int32')
 
         # Builds a pointer for optimization.
@@ -399,7 +401,7 @@ cdef class World(object):
 
         if self.action is not None:
             offset = (0.0, self.action, 0.0)
-            random_vertices = np.random.randint(
+            random_vertices = np_randint(
                 len(vertices), size=moved_vertices)
             for n in range(moved_vertices):
                 i = random_vertices[n]
