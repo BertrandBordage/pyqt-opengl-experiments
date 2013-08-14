@@ -10,7 +10,7 @@ import os
 from PIL import Image
 
 
-cdef inline real uniform(real a, real b) nogil:
+cdef real uniform(real a, real b) nogil:
     return a + (b - a) * rand() / RAND_MAX
 
 
@@ -26,7 +26,7 @@ cpdef ndarray[double, ndim=2] equalize_height_map(
     return m + (M - m) * hmap / hmap_max
 
 
-cpdef inline save_to_img(ndarray[double, ndim=2] m):
+cpdef save_to_img(ndarray[double, ndim=2] m):
     global i
     m = equalize_height_map(m, 0.0, 255.0)
 

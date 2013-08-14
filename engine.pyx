@@ -185,13 +185,11 @@ cdef ndarray[double, ndim=2] build_height_map(n):
     cdef ndarray[double, ndim=2] height_map = equalize_height_map(
         continuous_map(n), -20.0, 20.0)
     height_map += equalize_height_map(voronoi_array(n), -17.0, 17.0)
-    save_to_img(height_map)
     height_map = perturbate_array(height_map)
-    save_to_img(height_map)
     return height_map
 
 
-cdef inline void normalize_vectors(ndarray[float, ndim=2] vectors):
+cdef void normalize_vectors(ndarray[float, ndim=2] vectors):
     cdef ndarray[float, ndim=2] squared = vectors ** 2
     cdef ndarray[float, ndim=1] lens = np_sqrt(
         squared[:, 0] + squared[:, 1] + squared[:, 2])
