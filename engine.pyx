@@ -159,17 +159,18 @@ cdef class Camera(object):
     cdef inline Coords position(self) nogil:
         return [self.x, self.y, self.z]
 
-    cdef inline Coords direction(self) nogil:
-        cdef float arx = self.arx()
+    cdef inline Coords direction(self, float drx=0.0) nogil:
+        cdef float arx = self.arx() + drx
         cdef float ary = self.ary()
         return [sin(ary) * cos(arx), sin(arx), cos(ary) * cos(arx)]
 
     cdef void update_gl(self) nogil:
         p = self.position()
         d = self.direction()
+        up = self.direction(M_PI_2)
         gluLookAt(p.x, p.y, p.z,
                   p.x + d.x, p.y + d.y, p.z + d.z,
-                  0.0, cos(self.arx()), 0.0)
+                  up.x, up.y, up.z)
 
     cdef void update(self) nogil:
         self.adx = limit_float(self.adx, -90.0, 90.0)
