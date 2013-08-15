@@ -169,7 +169,7 @@ cdef class Camera(object):
         d = self.direction()
         gluLookAt(p.x, p.y, p.z,
                   p.x + d.x, p.y + d.y, p.z + d.z,
-                  0.0, 1.0, 0.0)
+                  0.0, cos(self.arx()), 0.0)
 
     cdef void update(self) nogil:
         self.adx = limit_float(self.adx, -90.0, 90.0)
