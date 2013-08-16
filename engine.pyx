@@ -10,8 +10,10 @@ from libc.math cimport cos, sin, M_PI, M_PI_2
 from libc.stdio cimport puts, printf
 import datetime
 
-from numpy cimport (ndarray, import_array, PyArray_Arange, PyArray_ZEROS,
-                    PyArray_Concatenate, NPY_FLOAT, NPY_UINT32)
+from numpy cimport (
+    ndarray, import_array, PyArray_SimpleNewFromData, PyArray_Arange,
+    PyArray_ZEROS, PyArray_Concatenate, PyArray_SwapAxes,
+    NPY_FLOAT, NPY_UINT32)
 from numpy import (array as np_array, sqrt as np_sqrt, rollaxis,
                    indices, column_stack, tile)
 from numpy.random import randint as np_randint
@@ -205,12 +207,15 @@ cdef void normalize_vectors(ndarray[float, ndim=2] vectors):
 
 cdef ndarray[float, ndim=2] cross_product(
         ndarray[float, ndim=2] a, ndarray[float, ndim=2] b):
-    cdef ndarray a0 = a[:, 0], a1 = a[:, 1], a2 = a[:, 2], \
-                 b0 = b[:, 0], b1 = b[:, 1], b2 = b[:, 2]
-    cdef ndarray x = a1*b2 - a2*b1, \
-                 y = a2*b0 - a0*b2, \
-                 z = a0*b1 - a1*b0
-    return np_array([x, y, z]).swapaxes(0, -1)
+    a = a.swapaxes(0, -1)
+    b = b.swapaxes(0, -1)
+    cdef ndarray a0 = a[0], a1 = a[1], a2 = a[2], \
+                 b0 = b[0], b1 = b[1], b2 = b[2]
+    return PyArray_SwapAxes(
+        PyArray_Concatenate(
+            [a1*b2 - a2*b1,
+             a2*b0 - a0*b2,
+             a0*b1 - a1*b0], 0).reshape(3, -1), 0, -1)
 
 
 cdef class Mesh(object):
@@ -266,8 +271,9 @@ cdef class Mesh(object):
         self.vertices_ptr = &vertices[0, 0]
 
     cdef void create_polygons(self, int n):
+        cdef unsigned int* two_triangles = [0, 1, n, 1, n+1, n]
         cdef ndarray[unsigned int, ndim=2] indices = (
-            (np_array([0, 1, n, 1, n+1, n], dtype=b'uint32')
+            (PyArray_SimpleNewFromData(1, [6], NPY_UINT32, two_triangles)
              + PyArray_Arange(0, n - 1, 1, NPY_UINT32).reshape(-1, 1)).flatten()
             + PyArray_Arange(0, (n - 1) ** 2, n, NPY_UINT32).reshape(-1, 1)
         ).reshape(-1, 3)
@@ -288,7 +294,7 @@ cdef class Mesh(object):
         cdef ndarray[float, ndim=2] normals_per_face = cross_product(
             faces[::, 1] - first_vertices, faces[::, 2] - first_vertices)
         normalize_vectors(normals_per_face)
-        indices = indices.swapaxes(0, -1)
+        indices = PyArray_SwapAxes(indices, 0, -1)
         normals[indices[0]] += normals_per_face
         normals[indices[1]] += normals_per_face
         normals[indices[2]] += normals_per_face
@@ -407,30 +413,31 @@ cdef class World(object):
                        GL_UNSIGNED_INT, self.mesh.indices_ptr)
 
     def update(self):
-        cdef tuple offset
+        cdef ndarray[float, ndim=1] offset
         cdef ndarray[float, ndim=2] vertices = self.mesh.vertices
         cdef ndarray[long, ndim=1] random_vertices
         cdef int n
         cdef long i
-        DEF moved_vertices = 500
+        DEF moved_vertices = 2000
 
         if self.action is not None:
-            offset = (0.0, self.action, 0.0)
+            offset = np_array([0.0, self.action, 0.0], dtype=b'float32')
             random_vertices = np_randint(
                 len(vertices), size=moved_vertices)
             for n in range(moved_vertices):
                 i = random_vertices[n]
-                vertices[i:i + 1] += offset
+                vertices[i] += offset
 
         # Make the y coordinate of the camera follow the mesh.
-        ys = vertices.reshape(-1, 3)[:, 1].reshape(-1, self.n)
+        ys = vertices[:, 1].reshape(-1, self.n)
         hn = self.n // 2
-        result = 10 + ys[hn + self.camera.x, hn + self.camera.z]
-        diff = self.camera.y - result
-        if diff < 0:
-            self.camera.y -= diff / 4
+        try:
+            result = 10 + ys[hn + self.camera.x, hn + self.camera.z]
+        except IndexError:
+            pass
         else:
-            self.camera.y -= diff / 20
+            diff = self.camera.y - result
+            self.camera.y -= diff / 4 if diff < 0 else diff / 20
 
     cdef int get_polygon_count(self):
         return self.mesh.indices_len / 3  # 3 points par face.
