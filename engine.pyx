@@ -413,20 +413,16 @@ cdef class World(object):
                        GL_UNSIGNED_INT, self.mesh.indices_ptr)
 
     def update(self):
-        cdef ndarray[float, ndim=1] offset
         cdef ndarray[float, ndim=2] vertices = self.mesh.vertices
         cdef ndarray[long, ndim=1] random_vertices
         cdef int n
         cdef long i
-        DEF moved_vertices = 2000
+        DEF moved_vertices = 20000
 
         if self.action is not None:
-            offset = np_array([0.0, self.action, 0.0], dtype=b'float32')
             random_vertices = np_randint(
                 len(vertices), size=moved_vertices)
-            for n in range(moved_vertices):
-                i = random_vertices[n]
-                vertices[i] += offset
+            vertices[random_vertices] += [0.0, self.action, 0.0]
 
         # Make the y coordinate of the camera follow the mesh.
         ys = vertices[:, 1].reshape(-1, self.n)
