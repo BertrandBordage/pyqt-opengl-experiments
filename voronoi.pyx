@@ -4,7 +4,7 @@ from __future__ import division
 from libc.stdlib cimport rand, RAND_MAX
 from numpy import concatenate, rollaxis, indices, array
 from numpy.random import randint as np_randint
-from numpy cimport ndarray, float64_t
+from numpy cimport ndarray
 from scipy.spatial.ckdtree import cKDTree
 from utils cimport save_to_img
 
