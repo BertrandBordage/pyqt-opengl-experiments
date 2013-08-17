@@ -6,7 +6,8 @@
 # cython: c_string_type=bytes
 
 from __future__ import unicode_literals, division
-from libc.math cimport cos, sin, M_PI, M_PI_2
+from libc.locale cimport setlocale, LC_NUMERIC
+from libc.math cimport fabs, fmax, sqrt, cos, sin, M_PI, M_PI_2
 from libc.stdio cimport puts, printf
 import datetime
 
@@ -24,6 +25,8 @@ from PyQt4 import QtGui
 from PyQt4 import QtOpenGL
 from PyQt4.QtGui import (
     QPixmap, QCursor, QSlider, QGroupBox, QGridLayout, QLabel, QDockWidget)
+from scipy.ndimage import generic_filter
+
 from diamond_square cimport continuous_map
 from utils cimport equalize_height_map
 from perturbation cimport perturbate_array
@@ -148,13 +151,13 @@ cdef class Camera(object):
 
     cdef inline float arx(self) nogil:
         """
-        Angle de l'axe x, en radians.
+        X axis angle, in radians.
         """
         return self.adx * M_PI / 180.0
 
     cdef inline float ary(self) nogil:
         """
-        Angle de l'axe y, en radians.
+        Y axis angle, in radians.
         """
         return self.ady * M_PI / 180.0
 
@@ -188,11 +191,34 @@ cdef class Camera(object):
             self.x, self.y, self.z, self.adx, self.ady)
 
 
-cdef ndarray[double, ndim=2] build_height_map(n):
+
+def get_slope(ndarray[double, ndim=1] a):
+    return fmax(fmax(fabs(a[0] - a[2]),
+                     fabs(a[1] - a[2])),
+                fmax(fabs(a[3] - a[2]),
+                     fabs(a[4] - a[2])))
+
+
+cdef float erosion_score(ndarray[double, ndim=2] height_map, int size):
+    cdef ndarray[unsigned int, ndim=2] footprint = np_array([
+        [0, 1, 0],
+        [1, 1, 1],
+        [0, 1, 0]], dtype=b'uint32')
+    cdef ndarray[double, ndim=2] slope_map = generic_filter(
+        height_map, get_slope, footprint=footprint)
+
+    cdef float slope = slope_map.sum() / size ** 2
+    cdef float standard_derivation = sqrt(
+        ((slope_map - slope) ** 2).sum() / size ** 2)
+    return standard_derivation / slope
+
+
+cdef ndarray[double, ndim=2] build_height_map(size):
     cdef ndarray[double, ndim=2] height_map = equalize_height_map(
-        continuous_map(n), -20.0, 20.0)
-    height_map += equalize_height_map(voronoi_array(n), -17.0, 17.0)
+        continuous_map(size), -20.0, 20.0)
+    height_map += equalize_height_map(voronoi_array(size), -17.0, 17.0)
     height_map = perturbate_array(height_map)
+    # printf('Erosion score : %f\n', erosion_score(height_map, size))
     return height_map
 
 
@@ -229,31 +255,32 @@ cdef class Mesh(object):
 
     def __cinit__(self, n):
         self.n = n
+        setlocale(LC_NUMERIC, 'en_US.UTF-8')
 
         start = datetime.datetime.now()
-        puts('Création du monde…')
+        puts('Creating world…')
 
         self.create_vertices(n)
         vertices_time = datetime.datetime.now()
-        printf('Chargement des points terminé en %f secondes.\n',
+        printf('Vertices generated in %f seconds.\n',
                <double> (vertices_time - start).total_seconds())
 
         self.create_polygons(n)
         polygons_time = datetime.datetime.now()
-        printf('Chargement des polygones terminé en %f secondes.\n',
+        printf('Polygons loaded in %f seconds.\n',
                <double> (polygons_time - vertices_time).total_seconds())
 
         self.create_normals(n)
         normals_time = datetime.datetime.now()
-        printf('Chargement des vecteurs normaux terminé en %f secondes.\n',
+        printf('Normal vectors calculated in %f seconds.\n',
                <double> (normals_time - polygons_time).total_seconds())
 
         self.create_texture_coordinates(n)
         texture_time = datetime.datetime.now()
-        printf('Chargement des textures terminé en %f secondes.\n',
+        printf('Textures loaded in %f seconds.\n',
                <double> (texture_time - normals_time).total_seconds())
 
-        printf('Temps total de chargement : %f secondes.\n',
+        printf('Total loading in %f seconds.\n',
                <double> (texture_time - start).total_seconds())
 
     cdef void create_vertices(self, int n):
@@ -439,8 +466,8 @@ cdef class World(object):
         return self.mesh.indices_len / 3  # 3 points par face.
 
     def get_status(self):
-        return '%s polygones: %d' % (self.camera.get_status(),
-                                     self.get_polygon_count())
+        return '%s polygons: %d' % (self.camera.get_status(),
+                                    self.get_polygon_count())
 
 
 class GLWidget(QtOpenGL.QGLWidget):
@@ -478,7 +505,7 @@ class GLWidget(QtOpenGL.QGLWidget):
         self.updateFPS()
         seconds_elapsed = (self.current_time - self.last_time).total_seconds()
         self.parent.statusBar().showMessage(
-            'fps: %.2f %s' % (self.frames_counted / seconds_elapsed,
+            'FPS: %.2f %s' % (self.frames_counted / seconds_elapsed,
                               self.world.get_status()))
 
     def updateFPS(self):
@@ -495,7 +522,7 @@ class Window(QtGui.QMainWindow):
         self.width = 1366
         self.height = 768
         self.resize(self.width, self.height)
-        self.setWindowTitle('Expérience OpenGL')
+        self.setWindowTitle('OpenGL experiments')
 
         self.glWidget = GLWidget(self)
         self.setCentralWidget(self.glWidget)
@@ -571,42 +598,42 @@ class Window(QtGui.QMainWindow):
         controls_layout = QGridLayout()
 
         self.text = QtGui.QTextEdit("""
-        <b>ZQSD</b> : Déplacement<br/>
-        <b>Espace</b> : Monter<br/>
-        <b>Maj</b> : Descendre<br/><br/>
+        <b>ZQSD</b>: Move horizontally<br/>
+        <b>Espace</b>: Move up<br/>
+        <b>Maj</b>: Move down<br/><br/>
 
-        <b>Clic gauche</b> : Déplacer des points par centaines<br/>
-        <b>Clic droit</b> : Les déplacer dans l’autre sens<br/>
-        <b>Molette</b> : Changer la vitesse de déplacement des points<br/><br/>
+        <b>Left click</b>: Move thousands of vertices<br/>
+        <b>Right click</b>: Move them in the opposite direction<br/>
+        <b>Mouse wheel</b>: Change vertices movement speed<br/><br/>
 
-        <b>Clic molette</b> : Figer la source de lumière<br/><br/>
+        <b>Mouse wheel click</b>: Freeze|Unfreeze light source<br/><br/>
 
-        <b>Échap</b> : Relâcher la souris
+        <b>Escape</b>: Ungrab mouse
         """)
         self.text.setReadOnly(True)
         self.text.setMaximumHeight(350)
         controls_layout.addWidget(self.text, 0, 0, 1, 2)
 
-        controls_layout.addWidget(QLabel('Champ\nde vision'), 1, 0)
+        controls_layout.addWidget(QLabel('Field\nof view'), 1, 0)
         self.fov_slider = QSlider(Qt.Horizontal)
         self.fov_slider.setRange(30, 90)
         self.fov_slider.setValue(45)
         controls_layout.addWidget(self.fov_slider, 1, 1)
 
-        controls_layout.addWidget(QLabel('Vitesse'), 2, 0)
+        controls_layout.addWidget(QLabel('Camera\nspeed'), 2, 0)
         self.speed_slider = QSlider(Qt.Horizontal)
         self.speed_slider.setRange(1, 10)
         self.speed_slider.setValue(2)
         controls_layout.addWidget(self.speed_slider, 2, 1)
 
-        controls_layout.addWidget(QLabel('Spot'), 3, 0)
+        controls_layout.addWidget(QLabel('Spot\ncutoff'), 3, 0)
         self.spot_slider = QSlider(Qt.Horizontal)
         self.spot_slider.setRange(1, 90)
         self.spot_slider.setValue(15)
         controls_layout.addWidget(self.spot_slider, 3, 1)
 
         self.controls.setLayout(controls_layout)
-        dock = QDockWidget('Contrôles')
+        dock = QDockWidget('Controls')
         dock.setAllowedAreas(Qt.LeftDockWidgetArea)
         dock.setWidget(self.controls)
         self.addDockWidget(Qt.LeftDockWidgetArea, dock)
