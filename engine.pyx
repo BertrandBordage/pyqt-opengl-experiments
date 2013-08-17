@@ -600,8 +600,8 @@ class Window(QtGui.QMainWindow):
 
         self.text = QtGui.QTextEdit("""
         <b>ZQSD</b>: Move horizontally<br/>
-        <b>Espace</b>: Move up<br/>
-        <b>Maj</b>: Move down<br/><br/>
+        <b>Space</b>: Move up<br/>
+        <b>Shift</b>: Move down<br/><br/>
 
         <b>Left click</b>: Move thousands of vertices<br/>
         <b>Right click</b>: Move them in the opposite direction<br/>
