@@ -13,7 +13,7 @@ import datetime
 
 from numpy cimport (
     ndarray, import_array, PyArray_SimpleNewFromData, PyArray_Arange,
-    PyArray_ZEROS, PyArray_Concatenate, PyArray_SwapAxes,
+    PyArray_ZEROS, PyArray_Concatenate, PyArray_SwapAxes, PyArray_Reshape,
     NPY_FLOAT, NPY_UINT32)
 from numpy import (array as np_array, sqrt as np_sqrt, rollaxis,
                    indices, column_stack, tile)
@@ -233,15 +233,16 @@ cdef void normalize_vectors(ndarray[float, ndim=2] vectors):
 
 cdef ndarray[float, ndim=2] cross_product(
         ndarray[float, ndim=2] a, ndarray[float, ndim=2] b):
-    a = a.swapaxes(0, -1)
-    b = b.swapaxes(0, -1)
+    a = PyArray_SwapAxes(a, 0, 1)
+    b = PyArray_SwapAxes(b, 0, 1)
     cdef ndarray a0 = a[0], a1 = a[1], a2 = a[2], \
                  b0 = b[0], b1 = b[1], b2 = b[2]
     return PyArray_SwapAxes(
-        PyArray_Concatenate(
-            [a1*b2 - a2*b1,
-             a2*b0 - a0*b2,
-             a0*b1 - a1*b0], 0).reshape(3, -1), 0, -1)
+        PyArray_Reshape(
+            PyArray_Concatenate(
+                [a1*b2 - a2*b1,
+                 a2*b0 - a0*b2,
+                 a0*b1 - a1*b0], 0), [3, -1]), 0, 1)
 
 
 cdef class Mesh(object):
@@ -287,7 +288,7 @@ cdef class Mesh(object):
         cdef ndarray[float, ndim=2] indices_xz
         # Taken from http://stackoverflow.com/a/4714857/1576438
         indices_xz = PyArray_Arange(-n // 2, n // 2, 1, NPY_FLOAT)[
-            rollaxis(indices([n, n]), 0, 3).reshape(-1, 2)]
+            PyArray_Reshape(rollaxis(indices([n, n]), 0, 3), [-1, 2])]
         cdef ndarray[float, ndim=2] vertices = column_stack((
             indices_xz[:, 0],
             build_height_map(n).astype(b'float32').flatten(),
@@ -316,12 +317,12 @@ cdef class Mesh(object):
         cdef ndarray[float, ndim=2] normals = PyArray_ZEROS(
             2, [n ** 2, 3], NPY_FLOAT, 0)
         indices = self.indices
-        cdef ndarray[float, ndim=3] faces = self.vertices[indices]
-        first_vertices = faces[::, 0]
+        cdef ndarray[float, ndim=3] faces = PyArray_SwapAxes(
+            self.vertices[indices], 0, 1)
+        first_vertices = faces[0]
         cdef ndarray[float, ndim=2] normals_per_face = cross_product(
-            faces[::, 1] - first_vertices, faces[::, 2] - first_vertices)
-        normalize_vectors(normals_per_face)
-        indices = PyArray_SwapAxes(indices, 0, -1)
+            faces[1] - first_vertices, faces[2] - first_vertices)
+        indices = PyArray_SwapAxes(indices, 0, 1)
         normals[indices[0]] += normals_per_face
         normals[indices[1]] += normals_per_face
         normals[indices[2]] += normals_per_face
