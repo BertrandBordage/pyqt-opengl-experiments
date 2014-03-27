@@ -74,6 +74,7 @@ cdef extern from 'GL/gl.h' nogil:
     int GL_SHININESS
     int GL_POSITION
     int GL_SPOT_DIRECTION
+    int GL_SPOT_EXPONENT
     int GL_AMBIENT_AND_DIFFUSE
     int GL_FRONT
     int GL_TRIANGLES
@@ -102,6 +103,22 @@ cdef extern from 'GL/gl.h' nogil:
                            GLvoid *ptr)
     void glDrawElements(GLenum mode, GLsizei count, GLenum type,
                         GLvoid *indices)
+
+
+cdef extern from 'GL/glext.h' nogil:
+    ctypedef ptrdiff_t GLsizeiptr
+    int GL_ARRAY_BUFFER
+    int GL_ELEMENT_ARRAY_BUFFER
+    int GL_STATIC_DRAW
+    int GL_DYNAMIC_DRAW
+    int GL_STREAM_DRAW
+    int GL_READ_ONLY
+    int GL_WRITE_ONLY
+    int GL_READ_WRITE
+    void glGenBuffers(GLsizei n, GLuint *buffers)
+    void glBindBuffer (GLenum target, GLuint buffer)
+    void glBufferData (GLenum target, GLsizeiptr size, const GLvoid *data, GLenum usage)
+    void *glMapBuffer(GLenum target, GLenum access)
 
 cdef extern from 'GL/glu.h' nogil:
     void gluPerspective(GLdouble fovy, GLdouble aspect,
@@ -249,8 +266,11 @@ cdef class Mesh(object):
     cdef int n
     cdef ndarray vertices, normals, texcoords, indices
     cdef float* vertices_ptr
+    cdef int vertices_len
     cdef float* normals_ptr
+    cdef int normals_len
     cdef int* texcoords_ptr
+    cdef int texcoords_len
     cdef unsigned int* indices_ptr
     cdef int indices_len
 
@@ -297,6 +317,7 @@ cdef class Mesh(object):
 
         # Builds a pointer for optimization.
         self.vertices_ptr = &vertices[0, 0]
+        self.vertices_len = vertices.shape[0] * vertices.shape[1]
 
     cdef void create_polygons(self, int n):
         cdef unsigned int* two_triangles = [0, 1, n, 1, n+1, n]
@@ -331,6 +352,7 @@ cdef class Mesh(object):
         # Builds a pointer for optimization.
         self.normals = normals
         self.normals_ptr = &normals[0, 0]
+        self.normals_len = normals.shape[0] * normals.shape[1]
 
     cdef void create_texture_coordinates(self, int n):
         cdef ndarray[int, ndim=3] texcoords = tile(
@@ -342,6 +364,7 @@ cdef class Mesh(object):
         # Builds a pointer for optimization.
         self.texcoords = texcoords
         self.texcoords_ptr = &texcoords[0, 0, 0]
+        self.texcoords_len = texcoords.shape[0] * texcoords.shape[1]
 
 
 cdef class World(object):
@@ -349,6 +372,10 @@ cdef class World(object):
     cdef int n
     cdef TextureImage texture
     cdef Mesh mesh
+    cdef GLuint vertices_buffer
+    cdef GLuint normals_buffer
+    cdef GLuint texcoords_buffer
+    cdef GLuint indices_buffer
     
     cdef public Camera camera
     cdef Coords spot_position, spot_direction
@@ -367,8 +394,39 @@ cdef class World(object):
         self.action = None
         self.action_step = 1.0
 
-        self.n = n = 512
+        self.n = n = 1024
         self.mesh = Mesh(n)
+
+    cdef void prepare_send(self) nogil:
+        glMatrixMode(GL_MODELVIEW)
+        glLoadIdentity()
+
+    cdef void send_vertices(self) nogil:
+        glBindBuffer(GL_ARRAY_BUFFER, self.vertices_buffer)
+        glBufferData(GL_ARRAY_BUFFER, self.mesh.vertices_len*3*sizeof(float),
+                     self.mesh.vertices_ptr, GL_STATIC_DRAW)
+        glEnableClientState(GL_VERTEX_ARRAY)
+        glVertexPointer(3, GL_FLOAT, 0, NULL)
+
+    cdef void send_normals(self) nogil:
+        glBindBuffer(GL_ARRAY_BUFFER, self.normals_buffer)
+        glBufferData(GL_ARRAY_BUFFER, self.mesh.normals_len*sizeof(float),
+                     self.mesh.normals_ptr, GL_STATIC_DRAW)
+        glEnableClientState(GL_NORMAL_ARRAY)
+        glNormalPointer(GL_FLOAT, 0, NULL)
+
+    cdef void send_texcoords(self) nogil:
+        glBindBuffer(GL_ARRAY_BUFFER, self.texcoords_buffer)
+        glBufferData(GL_ARRAY_BUFFER, self.mesh.texcoords_len*2*sizeof(int),
+                     self.mesh.texcoords_ptr, GL_STATIC_DRAW)
+        glEnableClientState(GL_TEXTURE_COORD_ARRAY)
+        glTexCoordPointer(2, GL_INT, 0, NULL)
+
+    cdef void send_indices(self) nogil:
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.indices_buffer)
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER,
+                     self.mesh.indices_len*sizeof(unsigned int),
+                     self.mesh.indices_ptr, GL_STATIC_DRAW)
 
     def initialize_gl(self):
         glEnable(GL_COLOR_MATERIAL)
@@ -383,6 +441,7 @@ cdef class World(object):
         glLightModeli(GL_LIGHT_MODEL_LOCAL_VIEWER, GL_TRUE)
         glLightf(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, 0.00001)
         glLightfv(GL_LIGHT0, GL_DIFFUSE, [0.7, 0.7, 0.7, 0.7])
+        glLightf(GL_LIGHT0, GL_SPOT_EXPONENT, 1.0)
 
         glEnable(GL_TEXTURE_2D)
         glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST)
@@ -390,6 +449,18 @@ cdef class World(object):
         glTexImage2D(GL_TEXTURE_2D,
                      0, GL_RGB, self.texture.width, self.texture.height,
                      0, GL_RGB, GL_UNSIGNED_BYTE, self.texture.array_ptr)
+
+        glGenBuffers(1, &self.vertices_buffer)
+        glGenBuffers(1, &self.normals_buffer)
+        glGenBuffers(1, &self.texcoords_buffer)
+        glGenBuffers(1, &self.indices_buffer)
+
+        self.prepare_send()
+
+        self.send_vertices()
+        self.send_normals()
+        self.send_texcoords()
+        self.send_indices()
 
     def update_gl(self):
         self.camera.update()
@@ -425,20 +496,9 @@ cdef class World(object):
         gluPerspective(fov, aspect, 1.0, 100000.0)
         self.camera.update_gl()
 
-        glMatrixMode(GL_MODELVIEW)
-        glLoadIdentity()
-
-        glEnableClientState(GL_VERTEX_ARRAY)
-        glVertexPointer(3, GL_FLOAT, 0, self.mesh.vertices_ptr)
-
-        glEnableClientState(GL_NORMAL_ARRAY)
-        glNormalPointer(GL_FLOAT, 0, self.mesh.normals_ptr)
-
-        glEnableClientState(GL_TEXTURE_COORD_ARRAY)
-        glTexCoordPointer(2, GL_INT, 0, self.mesh.texcoords_ptr)
-
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.indices_buffer)
         glDrawElements(GL_TRIANGLES, self.mesh.indices_len,
-                       GL_UNSIGNED_INT, self.mesh.indices_ptr)
+                       GL_UNSIGNED_INT, NULL)
 
     def update(self):
         cdef ndarray[float, ndim=2] vertices = self.mesh.vertices
@@ -451,6 +511,9 @@ cdef class World(object):
             random_vertices = np_randint(
                 len(vertices), size=moved_vertices)
             vertices[random_vertices] += [0.0, self.action, 0.0]
+
+            self.prepare_send()
+            self.send_vertices()
 
         # Make the y coordinate of the camera follow the mesh.
         ys = vertices[:, 1].reshape(-1, self.n)
